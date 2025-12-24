@@ -1,6 +1,8 @@
-# <img src="assets/hf_datasets_ex.svg" alt="HfDatasetsEx Logo" width="100" align="left"> HfDatasetsEx
-<br>
+<div align="center">
+  <img src="assets/hf_datasets_ex.svg" alt="HfDatasetsEx Logo" width="200">
+</div>
 
+# HfDatasetsEx
 
 [![Elixir](https://img.shields.io/badge/elixir-1.14+-purple.svg)](https://elixir-lang.org)
 [![Hex.pm](https://img.shields.io/hexpm/v/hf_datasets_ex.svg)](https://hex.pm/packages/hf_datasets_ex)
@@ -20,6 +22,7 @@ Load, stream, and process ML datasets from the HuggingFace Hub with full BEAM/OT
 - **Image Decode**: Vix/libvips integration for vision datasets
 - **Automatic Caching**: Fast access with local caching and version tracking
 - **Dataset Operations**: map, filter, shuffle, select, take, skip, batch, concat, split
+- **NumPy-Compatible Shuffling**: PCG64 PRNG matches Python's `datasets.shuffle(seed=N)` exactly
 - **Reproducibility**: Deterministic sampling with seeds, version tracking
 - **Extensible**: Easy integration of custom datasets and sources
 
@@ -30,7 +33,7 @@ Add `hf_datasets_ex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:hf_datasets_ex, "~> 0.1.0"}
+    {:hf_datasets_ex, "~> 0.1.1"}
   ]
 end
 ```
@@ -130,8 +133,11 @@ filtered = Dataset.filter(dataset, fn item ->
   item.difficulty == "hard"
 end)
 
-# Shuffle with seed
+# Shuffle with seed (uses NumPy-compatible PCG64 by default)
 shuffled = Dataset.shuffle(dataset, seed: 42)
+
+# Use Erlang's PRNG instead (faster, but different order than Python)
+shuffled_erlang = Dataset.shuffle(dataset, seed: 42, generator: :erlang)
 
 # Select columns
 selected = Dataset.select(dataset, ["question", "answer"])
@@ -294,6 +300,46 @@ folds = Sampler.k_fold(dataset, k: 5, shuffle: true, seed: 42)
 Enum.each(folds, fn {train_fold, test_fold} ->
   # Train and evaluate on each fold
 end)
+```
+
+## Reproducibility
+
+HfDatasetsEx uses a NumPy-compatible PCG64 pseudo-random number generator by default, ensuring that seeded shuffles produce **identical results** to Python's HuggingFace `datasets` library.
+
+```elixir
+# This produces the same order as Python's:
+# dataset.shuffle(seed=42)
+shuffled = Dataset.shuffle(dataset, seed: 42)
+
+# Explicitly specify the NumPy-compatible generator
+shuffled = Dataset.shuffle(dataset, seed: 42, generator: :numpy)
+
+# Use Erlang's native PRNG instead (faster, but different order than Python)
+shuffled = Dataset.shuffle(dataset, seed: 42, generator: :erlang)
+```
+
+### Generator Options
+
+| Generator | Description | Use Case |
+|-----------|-------------|----------|
+| `:numpy` (default) | PCG64 matching NumPy's implementation | Cross-language reproducibility with Python |
+| `:erlang` | Erlang's native `exsss` algorithm | Performance-critical shuffling, no Python parity needed |
+
+### Cross-Language Verification
+
+```python
+# Python
+from datasets import load_dataset
+ds = load_dataset("openai/gsm8k", split="train")
+shuffled = ds.shuffle(seed=42)
+print([ex["question"][:50] for ex in shuffled.select(range(3))])
+```
+
+```elixir
+# Elixir - produces identical order
+{:ok, ds} = HfDatasetsEx.load_dataset("openai/gsm8k", split: "train")
+shuffled = HfDatasetsEx.Dataset.shuffle(ds, seed: 42)
+shuffled |> Enum.take(3) |> Enum.map(& &1["question"] |> String.slice(0, 50))
 ```
 
 ## Testing

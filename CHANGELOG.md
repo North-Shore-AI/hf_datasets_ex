@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2025-12-23
+
+### Added
+
+- **NumPy-compatible PRNG:** PCG64 pseudo-random number generator matching NumPy's implementation for exact shuffle parity with Python's `datasets.shuffle(seed=N)`
+- **SeedSequence:** Hash-based seed mixing algorithm matching NumPy's seeding behavior
+- **Generator option for shuffle:** `Dataset.shuffle/2` now accepts `:generator` option (`:numpy` default, or `:erlang`)
+
+### Changed
+
+- **Updated logo:** Refreshed dataset overlay colors and positioning in SVG asset
+- **README layout:** Centered logo with improved styling
+
 ## [0.1.0] - 2025-12-22
 
 ### Added

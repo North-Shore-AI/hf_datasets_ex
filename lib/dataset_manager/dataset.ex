@@ -157,22 +157,33 @@ defmodule HfDatasetsEx.Dataset do
   ## Options
 
     * `:seed` - Random seed for reproducible shuffling
+    * `:generator` - PRNG to use: `:numpy` (PCG64, matches Python, default) or `:erlang`
 
   ## Example
 
       Dataset.shuffle(dataset)
-      Dataset.shuffle(dataset, seed: 42)
+      Dataset.shuffle(dataset, seed: 42)  # Matches Python's datasets.shuffle(seed=42)
+      Dataset.shuffle(dataset, seed: 42, generator: :erlang)  # Use Erlang's PRNG
 
   """
   @spec shuffle(t(), keyword()) :: t()
   def shuffle(%__MODULE__{} = dataset, opts \\ []) do
+    seed = Keyword.get(opts, :seed)
+    generator = Keyword.get(opts, :generator, :numpy)
+
     new_items =
-      case Keyword.get(opts, :seed) do
-        nil ->
+      case {seed, generator} do
+        {nil, _} ->
           Enum.shuffle(dataset.items)
 
-        seed ->
-          # Use seeded random for deterministic shuffle
+        {seed, :numpy} ->
+          # Use PCG64 for exact NumPy compatibility
+          pcg_state = HfDatasetsEx.PRNG.PCG64.seed(seed)
+          {shuffled, _state} = HfDatasetsEx.PRNG.PCG64.shuffle(dataset.items, pcg_state)
+          shuffled
+
+        {seed, :erlang} ->
+          # Use Erlang's PRNG (faster but different order than Python)
           :rand.seed(:exsss, {seed, seed, seed})
           Enum.shuffle(dataset.items)
       end
