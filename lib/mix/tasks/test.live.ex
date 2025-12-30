@@ -1,18 +1,18 @@
-defmodule Mix.Tasks.Test.Live do
-  @shortdoc "Run tests with live data sources"
+defmodule Mix.Tasks.HfDatasets.Test.Live do
+  @shortdoc "Run hf_datasets_ex tests with live data sources"
   @moduledoc """
   Runs the test suite against live data sources.
 
   ## Usage
 
       # Run all tests with live data
-      mix test.live
+      mix hf_datasets.test.live
 
       # Run specific test file with live data
-      mix test.live test/dataset_manager/loader/gsm8k_test.exs
+      mix hf_datasets.test.live test/dataset_manager/loader/gsm8k_test.exs
 
       # Pass any mix test options
-      mix test.live --only integration --trace
+      mix hf_datasets.test.live --only integration --trace
 
   ## Configuration
 
