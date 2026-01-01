@@ -8,7 +8,7 @@ defmodule HfDatasetsEx.Loader.ReasoningTest do
       {:ok, dataset} = Reasoning.load(:open_thoughts3, TestHelper.data_opts())
 
       assert dataset.name == "open_thoughts3"
-      assert length(dataset.items) > 0
+      assert dataset.items != []
       assert dataset.metadata.domain == "reasoning"
     end
 

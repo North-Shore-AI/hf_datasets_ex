@@ -141,8 +141,7 @@ defmodule HfDatasetsEx.Types.Comparison do
     # Get all user messages as the prompt
     messages
     |> Enum.filter(&(&1.role == :user))
-    |> Enum.map(& &1.content)
-    |> Enum.join("\n\n")
+    |> Enum.map_join("\n\n", & &1.content)
   end
 
   defp sort_by_score(responses) do

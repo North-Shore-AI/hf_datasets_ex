@@ -33,8 +33,8 @@ defmodule HfDatasetsEx.PRNG.SeedSequenceTest do
     end
 
     test "same seed produces same state" do
-      result1 = SeedSequence.generate_pcg64_state(12345)
-      result2 = SeedSequence.generate_pcg64_state(12345)
+      result1 = SeedSequence.generate_pcg64_state(12_345)
+      result2 = SeedSequence.generate_pcg64_state(12_345)
 
       assert result1 == result2
     end

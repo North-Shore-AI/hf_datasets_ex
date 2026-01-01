@@ -19,6 +19,7 @@ defmodule HfDatasetsEx.Loader.Reasoning do
   alias HfDatasetsEx.Dataset
   alias HfDatasetsEx.Fetcher.HuggingFace
   alias HfDatasetsEx.Types.Conversation
+  alias HfDatasetsEx.Types.Message
 
   @datasets %{
     open_thoughts3: %{
@@ -103,46 +104,12 @@ defmodule HfDatasetsEx.Loader.Reasoning do
   end
 
   defp parse_item(item, :open_thoughts, idx) do
-    # OpenThoughts3 format: conversations with from/value pairs
     conversations = item["conversations"] || []
-
-    messages =
-      Enum.map(conversations, fn msg ->
-        role =
-          case msg["from"] do
-            "human" -> :user
-            "gpt" -> :assistant
-            "system" -> :system
-            _ -> :user
-          end
-
-        HfDatasetsEx.Types.Message.new(role, msg["value"] || "")
-      end)
+    messages = build_messages(conversations)
 
     case Conversation.new(messages) do
       conversation when is_struct(conversation) ->
-        # Extract the user prompt (first user message)
-        prompt = extract_first_user_message(conversations)
-
-        # Extract the assistant reasoning (last assistant message)
-        reasoning = extract_last_assistant_message(conversations)
-
-        {:ok,
-         %{
-           id: "open_thoughts_#{idx}",
-           input: %{
-             prompt: prompt,
-             conversation: conversation
-           },
-           expected: %{
-             reasoning: reasoning
-           },
-           metadata: %{
-             source: "open_thoughts3",
-             turn_count: length(messages),
-             has_reasoning: String.contains?(reasoning || "", ["<think>", "Let me", "First,"])
-           }
-         }}
+        {:ok, build_open_thoughts_item(conversations, conversation, messages, idx)}
 
       _ ->
         {:error, :invalid_conversation}
@@ -168,6 +135,39 @@ defmodule HfDatasetsEx.Loader.Reasoning do
          has_reasoning: String.length(solution) > 100
        }
      }}
+  end
+
+  defp build_messages(conversations) do
+    Enum.map(conversations, fn msg ->
+      role = normalize_role(msg["from"])
+      Message.new(role, msg["value"] || "")
+    end)
+  end
+
+  defp normalize_role("human"), do: :user
+  defp normalize_role("gpt"), do: :assistant
+  defp normalize_role("system"), do: :system
+  defp normalize_role(_), do: :user
+
+  defp build_open_thoughts_item(conversations, conversation, messages, idx) do
+    prompt = extract_first_user_message(conversations)
+    reasoning = extract_last_assistant_message(conversations)
+
+    %{
+      id: "open_thoughts_#{idx}",
+      input: %{
+        prompt: prompt,
+        conversation: conversation
+      },
+      expected: %{
+        reasoning: reasoning
+      },
+      metadata: %{
+        source: "open_thoughts3",
+        turn_count: length(messages),
+        has_reasoning: String.contains?(reasoning || "", ["<think>", "Let me", "First,"])
+      }
+    }
   end
 
   defp extract_first_user_message(conversations) do

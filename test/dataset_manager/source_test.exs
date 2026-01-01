@@ -82,7 +82,7 @@ defmodule HfDatasetsEx.SourceTest do
     test "list_files/2 returns files for valid repo" do
       {:ok, files} = HuggingFace.list_files("openai/gsm8k", split: "test", config: "main")
       assert is_list(files)
-      assert length(files) > 0
+      assert files != []
     end
 
     @tag timeout: 60_000

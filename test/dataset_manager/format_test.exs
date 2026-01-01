@@ -150,12 +150,15 @@ defmodule HfDatasetsEx.FormatTest do
 
   describe "Format.detect/1" do
     test "detects format from file path" do
-      assert Format.detect("data.jsonl") == :jsonl
-      assert Format.detect("data.json") == :json
-      assert Format.detect("data.csv") == :csv
-      assert Format.detect("data.parquet") == :parquet
-      assert Format.detect("data.txt") == :text
-      assert Format.detect("data.unknown") == :unknown
+      assert {:ok, HfDatasetsEx.Format.JSONL, []} = Format.detect("data.jsonl")
+      assert {:ok, HfDatasetsEx.Format.JSONL, []} = Format.detect("data.ndjson")
+      assert {:ok, HfDatasetsEx.Format.JSON, []} = Format.detect("data.json")
+      assert {:ok, HfDatasetsEx.Format.CSV, []} = Format.detect("data.csv")
+      assert {:ok, HfDatasetsEx.Format.CSV, [delimiter: "\t"]} = Format.detect("data.tsv")
+      assert {:ok, HfDatasetsEx.Format.Parquet, []} = Format.detect("data.parquet")
+      assert {:ok, HfDatasetsEx.Format.Text, []} = Format.detect("data.txt")
+      assert {:ok, HfDatasetsEx.Format.Arrow, []} = Format.detect("data.arrow")
+      assert {:error, :unknown_format} = Format.detect("data.unknown")
     end
   end
 
@@ -164,7 +167,10 @@ defmodule HfDatasetsEx.FormatTest do
       assert Format.parser_for(:jsonl) == HfDatasetsEx.Format.JSONL
       assert Format.parser_for(:json) == HfDatasetsEx.Format.JSON
       assert Format.parser_for(:csv) == HfDatasetsEx.Format.CSV
+      assert Format.parser_for(:tsv) == {HfDatasetsEx.Format.CSV, [delimiter: "\t"]}
       assert Format.parser_for(:parquet) == HfDatasetsEx.Format.Parquet
+      assert Format.parser_for(:text) == HfDatasetsEx.Format.Text
+      assert Format.parser_for(:arrow) == HfDatasetsEx.Format.Arrow
       assert Format.parser_for(:unknown) == nil
     end
   end

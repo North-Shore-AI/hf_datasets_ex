@@ -107,6 +107,23 @@ defmodule HfDatasetsEx.Loader do
   end
 
   @doc """
+  Load a dataset from a local file path.
+
+  Supports JSONL, JSON, CSV, and Parquet formats.
+  """
+  @spec load_from_file(Path.t(), keyword()) :: {:ok, Dataset.t()} | {:error, term()}
+  def load_from_file(path, opts \\ []) when is_binary(path) do
+    name = Keyword.get(opts, :name) || Path.basename(path, Path.extname(path))
+    version = Keyword.get(opts, :version, "1.0")
+    metadata = Keyword.get(opts, :metadata, %{})
+    features = Keyword.get(opts, :features)
+
+    with {:ok, items} <- Format.parse(path) do
+      {:ok, Dataset.new(name, version, items, metadata, features)}
+    end
+  end
+
+  @doc """
   Load a HuggingFace dataset by repo_id.
 
   ## Options
@@ -177,48 +194,40 @@ defmodule HfDatasetsEx.Loader do
     end
   end
 
+  # Dataset loader dispatch table
+  @dataset_loaders %{
+    mmlu: {MMLU, :load, [:name]},
+    mmlu_stem: {MMLU, :load, [:name]},
+    humaneval: {HumanEval, :load, []},
+    gsm8k: {GSM8K, :load, []},
+    math_500: {Math, :load, [:name]},
+    hendrycks_math: {Math, :load, [:name]},
+    deepmath: {Math, :load, [:name]},
+    polaris: {Math, :load, [:name]},
+    tulu3_sft: {Chat, :load, [:name]},
+    no_robots: {Chat, :load, [:name]},
+    hh_rlhf: {Preference, :load, [:name]},
+    helpsteer3: {Preference, :load, [:name]},
+    helpsteer2: {Preference, :load, [:name]},
+    ultrafeedback: {Preference, :load, [:name]},
+    arena_140k: {Preference, :load, [:name]},
+    tulu3_preference: {Preference, :load, [:name]},
+    deepcoder: {Code, :load, [:deepcoder]},
+    open_thoughts3: {Reasoning, :load, [:name]},
+    deepmath_reasoning: {Reasoning, :load, [:name]},
+    feedback_collection: {Rubric, :load, [:feedback_collection]},
+    caltech101: {Vision, :load, [:name]},
+    oxford_flowers102: {Vision, :load, [:name]},
+    oxford_iiit_pet: {Vision, :load, [:name]},
+    stanford_cars: {Vision, :load, [:name]}
+  }
+
   defp fetch_and_parse({dataset_name, source_spec}, _name, opts) do
-    case dataset_name do
-      name when name in [:mmlu, :mmlu_stem] ->
-        MMLU.load(dataset_name, opts)
-
-      :humaneval ->
-        HumanEval.load(opts)
-
-      :gsm8k ->
-        GSM8K.load(opts)
-
-      name when name in [:math_500, :hendrycks_math, :deepmath, :polaris] ->
-        Math.load(name, opts)
-
-      name when name in [:tulu3_sft, :no_robots] ->
-        Chat.load(name, opts)
-
-      name
-      when name in [
-             :hh_rlhf,
-             :helpsteer3,
-             :helpsteer2,
-             :ultrafeedback,
-             :arena_140k,
-             :tulu3_preference
-           ] ->
-        Preference.load(name, opts)
-
-      :deepcoder ->
-        Code.load(:deepcoder, opts)
-
-      name when name in [:open_thoughts3, :deepmath_reasoning] ->
-        Reasoning.load(name, opts)
-
-      :feedback_collection ->
-        Rubric.load(:feedback_collection, opts)
-
-      name when name in [:caltech101, :oxford_flowers102, :oxford_iiit_pet, :stanford_cars] ->
-        Vision.load(name, opts)
-
-      _ ->
-        load_custom(dataset_name, source_spec, opts)
+    case Map.get(@dataset_loaders, dataset_name) do
+      {module, func, [:name]} -> apply(module, func, [dataset_name, opts])
+      {module, func, [fixed_name]} -> apply(module, func, [fixed_name, opts])
+      {module, func, []} -> apply(module, func, [opts])
+      nil -> load_custom(dataset_name, source_spec, opts)
     end
   end
 
@@ -283,10 +292,8 @@ defmodule HfDatasetsEx.Loader do
   defp load_dataset_split(repo_id, split, opts) do
     split_str = to_string(split)
 
-    with {:ok, %{config: config, splits: splits}} <- DataFiles.resolve(repo_id, opts),
-         {:ok, dataset} <-
-           load_dataset_from_files(repo_id, split_str, splits[split_str], config, opts) do
-      {:ok, dataset}
+    with {:ok, %{config: config, splits: splits}} <- DataFiles.resolve(repo_id, opts) do
+      load_dataset_from_files(repo_id, split_str, splits[split_str], config, opts)
     end
   end
 
@@ -378,14 +385,9 @@ defmodule HfDatasetsEx.Loader do
     results =
       paths
       |> Enum.map(fn file_path ->
-        format = if format_hint == :unknown, do: Format.detect(file_path), else: format_hint
-
-        parser = Format.parser_for(format)
-
-        if is_nil(parser) do
-          {:ok, []}
-        else
-          apply(parser, :parse, [file_path])
+        case resolve_format_config(file_path, format_hint) do
+          {:ok, module, opts} -> module.parse(file_path, opts)
+          {:error, _} -> {:ok, []}
         end
       end)
 
@@ -409,9 +411,9 @@ defmodule HfDatasetsEx.Loader do
   end
 
   defp stream_file(repo_id, file, opts) do
-    case file.format do
-      :jsonl -> stream_jsonl(repo_id, file.path, opts)
-      :parquet -> stream_parquet(repo_id, file.path, opts)
+    case format_module(file.format) do
+      HfDatasetsEx.Format.JSONL -> stream_jsonl(repo_id, file.path, opts)
+      HfDatasetsEx.Format.Parquet -> stream_parquet(repo_id, file.path, opts)
       _ -> stream_fallback(repo_id, file, opts)
     end
   end
@@ -462,13 +464,70 @@ defmodule HfDatasetsEx.Loader do
     end
   end
 
+  @supported_data_formats [
+    HfDatasetsEx.Format.Parquet,
+    HfDatasetsEx.Format.JSONL,
+    HfDatasetsEx.Format.JSON,
+    HfDatasetsEx.Format.CSV
+  ]
+
   defp expand_data_paths(path) do
     if File.dir?(path) do
       Path.wildcard(Path.join(path, "**/*"))
       |> Enum.reject(&File.dir?/1)
-      |> Enum.filter(&(Format.detect(&1) in [:parquet, :jsonl, :json, :csv]))
+      |> Enum.filter(&supported_data_format?/1)
     else
       [path]
+    end
+  end
+
+  defp supported_data_format?(path) do
+    case Format.detect(path) do
+      {:ok, module, _opts} -> module in @supported_data_formats
+      _ -> false
+    end
+  end
+
+  defp resolve_format_config(_file_path, {:ok, module, opts}), do: {:ok, module, opts}
+  defp resolve_format_config(file_path, {:error, _}), do: Format.detect(file_path)
+  defp resolve_format_config(file_path, :unknown), do: Format.detect(file_path)
+
+  defp resolve_format_config(file_path, atom) when is_atom(atom) do
+    if function_exported?(atom, :parse, 2) do
+      {:ok, atom, []}
+    else
+      resolve_format_via_parser(file_path, atom)
+    end
+  end
+
+  defp resolve_format_config(file_path, _), do: Format.detect(file_path)
+
+  defp resolve_format_via_parser(file_path, atom) do
+    case Format.parser_for(atom) do
+      {module, opts} -> {:ok, module, opts}
+      module when is_atom(module) and not is_nil(module) -> {:ok, module, []}
+      nil -> Format.detect(file_path)
+    end
+  end
+
+  defp format_module({:ok, module, _opts}), do: module
+  defp format_module({:error, _}), do: nil
+
+  defp format_module(atom) when is_atom(atom) do
+    if function_exported?(atom, :parse, 2) do
+      atom
+    else
+      module_from_parser(atom)
+    end
+  end
+
+  defp format_module(_), do: nil
+
+  defp module_from_parser(atom) do
+    case Format.parser_for(atom) do
+      {module, _opts} -> module
+      module when is_atom(module) and not is_nil(module) -> module
+      nil -> nil
     end
   end
 end

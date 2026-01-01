@@ -10,7 +10,7 @@ defmodule HfDatasetsEx.DataFiles do
 
   @type file_info :: %{
           path: String.t(),
-          format: atom(),
+          format: {:ok, module(), keyword()} | {:error, term()},
           size: non_neg_integer() | nil
         }
 

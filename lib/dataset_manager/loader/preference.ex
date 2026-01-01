@@ -251,9 +251,7 @@ defmodule HfDatasetsEx.Loader.Preference do
     conversation_b = item["conversation_b"] || []
 
     # Skip ties or invalid winners
-    unless winner in ["model_a", "model_b"] do
-      {:error, :invalid_winner}
-    else
+    if winner in ["model_a", "model_b"] do
       # Extract prompt from first user message in conversation_a
       prompt = extract_arena_prompt(conversation_a)
 
@@ -278,6 +276,8 @@ defmodule HfDatasetsEx.Loader.Preference do
            model_b: item["model_b"]
          }
        }}
+    else
+      {:error, :invalid_winner}
     end
   end
 
@@ -341,8 +341,7 @@ defmodule HfDatasetsEx.Loader.Preference do
     # Arena uses {"type": "text", "text": "..."} format
     content
     |> Enum.filter(fn item -> is_map(item) and item["type"] == "text" end)
-    |> Enum.map(fn item -> item["text"] || "" end)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", fn item -> item["text"] || "" end)
   end
 
   defp extract_content_text(_), do: ""

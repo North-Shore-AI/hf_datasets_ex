@@ -18,12 +18,18 @@ Load, stream, and process ML datasets from the HuggingFace Hub with full BEAM/OT
 - **HuggingFace Parity API**: `load_dataset` with repo_id/config/split/streaming
 - **DatasetDict + IterableDataset**: Split indexing + streaming iteration
 - **Streaming Support**: JSONL line-by-line; Parquet batch streaming
-- **Features Schema**: Value/ClassLabel/Sequence/Image + inference
+- **Features Schema**: Value/ClassLabel/Sequence/Image/Array2D-5D/Translation + inference
 - **Image Decode**: Vix/libvips integration for vision datasets
 - **Automatic Caching**: Fast access with local caching and version tracking
-- **Dataset Operations**: map, filter, shuffle, select, take, skip, batch, concat, split
+- **Transform Caching**: Fingerprint-based caching for map/filter operations
+- **Dataset Operations**: map, filter, shuffle, select, take, skip, batch, concat, split, cast
+- **Export Formats**: CSV, JSON, JSONL, Parquet, Arrow IPC, plain text
+- **Hub Integration**: Push datasets directly to HuggingFace Hub
+- **Nx Integration**: Format datasets as Nx tensors for ML workflows
+- **Vector Search**: Built-in similarity search with cosine/L2/inner-product metrics
 - **NumPy-Compatible Shuffling**: PCG64 PRNG matches Python's `datasets.shuffle(seed=N)` exactly
 - **Reproducibility**: Deterministic sampling with seeds, version tracking
+- **Custom Builders**: Define custom dataset builders with the DatasetBuilder behaviour
 - **Extensible**: Easy integration of custom datasets and sources
 
 ## Installation
@@ -33,7 +39,7 @@ Add `hf_datasets_ex` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:hf_datasets_ex, "~> 0.1.1"}
+    {:hf_datasets_ex, "~> 0.1.2"}
   ]
 end
 ```
@@ -192,6 +198,202 @@ filtered_dd = DatasetDict.filter(dd, fn item -> item["is_valid"] end)
 all_data = DatasetDict.flatten(dd)
 ```
 
+### Loading from Files
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Load from various file formats
+{:ok, csv_ds} = Dataset.from_csv("/path/to/data.csv")
+{:ok, json_ds} = Dataset.from_json("/path/to/data.json")
+{:ok, parquet_ds} = Dataset.from_parquet("/path/to/data.parquet")
+{:ok, text_ds} = Dataset.from_text("/path/to/data.txt")
+
+# Bang versions raise on error
+ds = Dataset.from_csv!("/path/to/data.csv")
+
+# From generator (lazy by default)
+stream = Dataset.from_generator(fn ->
+  Stream.repeatedly(fn -> %{"x" => :rand.uniform()} end)
+  |> Stream.take(1000)
+end)
+
+# Eager evaluation
+ds = Dataset.from_generator(
+  fn -> 1..100 |> Stream.map(&%{"x" => &1}) end,
+  eager: true
+)
+```
+
+### Exporting Datasets
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Export to various formats
+Dataset.to_csv(dataset, "/path/to/output.csv")
+Dataset.to_json(dataset, "/path/to/output.json")
+Dataset.to_jsonl(dataset, "/path/to/output.jsonl")
+Dataset.to_parquet(dataset, "/path/to/output.parquet")
+Dataset.to_arrow(dataset, "/path/to/output.arrow")
+Dataset.to_text(dataset, "/path/to/output.txt", column: "text")
+
+# JSON with column orientation
+Dataset.to_json(dataset, "/path/to/output.json", orient: :columns)
+```
+
+### Nx Tensor Formatting
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Set format for Nx tensors
+dataset = Dataset.set_format(dataset, :nx, columns: ["input_ids", "labels"])
+
+# Iteration returns tensors
+Enum.each(dataset, fn row ->
+  # row["input_ids"] is an Nx tensor
+  Nx.sum(row["input_ids"])
+end)
+
+# Batch iteration with tensors
+dataset
+|> Dataset.iter(batch_size: 32)
+|> Enum.each(fn batch ->
+  # batch["input_ids"] is a stacked tensor of shape {32, ...}
+  model_forward(batch)
+end)
+
+# Reset to default Elixir format
+dataset = Dataset.reset_format(dataset)
+```
+
+### Vector Similarity Search
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Add embeddings to your dataset
+dataset = Dataset.from_list([
+  %{"id" => 1, "text" => "Hello", "embedding" => [0.1, 0.2, 0.3]},
+  %{"id" => 2, "text" => "World", "embedding" => [0.4, 0.5, 0.6]},
+  # ...
+])
+
+# Create a search index
+dataset = Dataset.add_index(dataset, "embedding", metric: :cosine)
+
+# Search for nearest neighbors
+query = Nx.tensor([0.15, 0.25, 0.35])
+{scores, examples} = Dataset.get_nearest_examples(dataset, "embedding", query, k: 5)
+
+# Save/load index
+Dataset.save_index(dataset, "embedding", "/path/to/index.idx")
+{:ok, dataset} = Dataset.load_index(dataset, "embedding", "/path/to/index.idx")
+```
+
+### Push to HuggingFace Hub
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Requires HF_TOKEN environment variable or token option
+{:ok, url} = Dataset.push_to_hub(dataset, "username/my-dataset")
+
+# With options
+{:ok, url} = Dataset.push_to_hub(dataset, "username/my-dataset",
+  private: true,
+  split: "train",
+  token: "hf_xxx..."
+)
+
+# Push DatasetDict (all splits)
+{:ok, url} = DatasetDict.push_to_hub(dataset_dict, "username/my-dataset")
+```
+
+### Type Casting
+
+```elixir
+alias HfDatasetsEx.{Dataset, Features}
+alias HfDatasetsEx.Features.{ClassLabel, Value}
+
+# Cast entire dataset to new schema
+new_features = Features.new(%{
+  "label" => ClassLabel.new(names: ["neg", "pos"]),
+  "score" => %Value{dtype: :float32}
+})
+{:ok, casted} = Dataset.cast(dataset, new_features)
+
+# Cast single column
+{:ok, casted} = Dataset.cast_column(dataset, "label",
+  ClassLabel.new(names: ["neg", "pos"])
+)
+
+# Auto-encode string column to integers
+{:ok, encoded} = Dataset.class_encode_column(dataset, "category")
+```
+
+### Train/Test Split with Stratification
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Simple split
+{:ok, %{train: train, test: test}} = Dataset.train_test_split(dataset,
+  test_size: 0.2,
+  seed: 42
+)
+
+# Stratified split (maintains class distribution)
+{:ok, %{train: train, test: test}} = Dataset.train_test_split(dataset,
+  test_size: 0.2,
+  stratify_by_column: "label",
+  seed: 42
+)
+```
+
+### Custom Dataset Builders
+
+```elixir
+defmodule MyDataset do
+  use HfDatasetsEx.DatasetBuilder
+
+  @impl true
+  def info do
+    DatasetInfo.new(
+      description: "My custom dataset",
+      features: Features.new(%{
+        "text" => %Value{dtype: :string},
+        "label" => ClassLabel.new(names: ["neg", "pos"])
+      })
+    )
+  end
+
+  @impl true
+  def split_generators(dl_manager, _config) do
+    {:ok, train_path} = DownloadManager.download(dl_manager, @train_url)
+    {:ok, test_path} = DownloadManager.download(dl_manager, @test_url)
+
+    [
+      SplitGenerator.new(:train, %{filepath: train_path}),
+      SplitGenerator.new(:test, %{filepath: test_path})
+    ]
+  end
+
+  @impl true
+  def generate_examples(%{filepath: path}, _split) do
+    path
+    |> File.stream!()
+    |> Stream.with_index()
+    |> Stream.map(fn {line, idx} -> {idx, Jason.decode!(line)} end)
+  end
+end
+
+# Build the dataset
+{:ok, dataset_dict} = HfDatasetsEx.Builder.build(MyDataset)
+{:ok, train} = HfDatasetsEx.Builder.build(MyDataset, split: :train)
+```
+
 ### Features Schema
 
 ```elixir
@@ -233,19 +435,36 @@ HfDatasetsEx/
 ├── Dataset                      # Dataset struct + operations
 ├── DatasetDict                  # Split dictionary
 ├── IterableDataset              # Streaming dataset
-├── Features                     # Features schema system
+├── Builder                      # Dataset builder runner
+├── DatasetBuilder               # Builder behaviour
+├── Features/                    # Features schema system
 │   ├── Value                    # Scalar types
 │   ├── ClassLabel               # Categorical
 │   ├── Sequence                 # Lists
-│   └── Image                    # Image data
+│   ├── Image                    # Image data
+│   ├── Audio                    # Audio data
+│   ├── Array2D-5D               # Multi-dimensional arrays
+│   └── Translation              # Parallel text
+├── Formatter/                   # Output formatting
+│   ├── Elixir                   # Native Elixir (default)
+│   ├── Nx                       # Nx tensors
+│   ├── Explorer                 # Explorer DataFrames
+│   └── Custom                   # Custom transforms
+├── Index/                       # Search indices
+│   └── BruteForce               # Similarity search
 ├── Source/                      # Data source abstraction
 │   ├── Local                    # Local filesystem
 │   └── HuggingFace              # HuggingFace Hub
 ├── Format/                      # File format parsers
 │   ├── JSONL                    # JSON Lines
 │   ├── JSON                     # JSON
-│   ├── CSV                      # CSV
-│   └── Parquet                  # Parquet via Explorer
+│   ├── CSV                      # CSV/TSV
+│   ├── Parquet                  # Parquet via Explorer
+│   ├── Arrow                    # Arrow IPC
+│   └── Text                     # Plain text
+├── Export/                      # Export writers
+│   ├── Arrow                    # Arrow IPC export
+│   └── Text                     # Plain text export
 ├── Loader/                      # Dataset-specific loaders
 │   ├── MMLU                     # MMLU loader
 │   ├── HumanEval                # HumanEval loader
@@ -257,8 +476,15 @@ HfDatasetsEx/
 │   └── Vision                   # Vision datasets
 ├── Fetcher/
 │   └── HuggingFace              # HuggingFace Hub API client
+├── Hub                          # Hub upload operations
 ├── Cache                        # Local caching
+├── TransformCache               # Transform result caching
+├── Fingerprint                  # Operation fingerprinting
+├── DownloadManager              # File download/extraction
 ├── Sampler                      # Sampling utilities
+├── PRNG/                        # Random number generators
+│   ├── PCG64                    # NumPy-compatible PRNG
+│   └── SeedSequence             # Seed mixing
 └── Types/                       # Structured data types
     ├── Message                  # Chat message
     ├── Conversation             # Multi-turn conversation
@@ -349,14 +575,20 @@ shuffled |> Enum.take(3) |> Enum.map(& &1["question"] |> String.slice(0, 50))
 mix test
 
 # Run live (network) tests
-mix test.live
+mix hf_datasets.test.live
 ```
 
 ## Static Analysis
 
 ```bash
-# Run Dialyzer
+# Run Dialyzer for type checking
 mix dialyzer
+
+# Run Credo for code quality
+mix credo --strict
+
+# Format code
+mix format
 ```
 
 ## License

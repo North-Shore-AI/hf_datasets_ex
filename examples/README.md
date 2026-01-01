@@ -68,6 +68,28 @@ mix run examples/math/gsm8k_example.exs
 | [sampling_strategies.exs](sampling_strategies.exs) | Random, stratified, k-fold sampling | `mix run examples/sampling_strategies.exs` |
 | [cross_validation.exs](cross_validation.exs) | K-fold cross-validation splits | `mix run examples/cross_validation.exs` |
 
+### File I/O (v0.1.2+)
+
+| Example | Description | Command |
+|---------|-------------|---------|
+| [file_loading.exs](file_loading.exs) | Load from CSV, JSON, JSONL, Parquet, text files | `mix run examples/file_loading.exs` |
+| [export_formats.exs](export_formats.exs) | Export to CSV, JSON, JSONL, Parquet, Arrow, text | `mix run examples/export_formats.exs` |
+
+### ML Integration (v0.1.2+)
+
+| Example | Description | Command |
+|---------|-------------|---------|
+| [nx_formatting.exs](nx_formatting.exs) | Format output as Nx tensors, batch iteration | `mix run examples/nx_formatting.exs` |
+| [vector_search.exs](vector_search.exs) | Vector similarity search with embeddings | `mix run examples/vector_search.exs` |
+| [type_casting.exs](type_casting.exs) | Cast columns, encode labels, stratified splits | `mix run examples/type_casting.exs` |
+
+### Advanced (v0.1.2+)
+
+| Example | Description | Command |
+|---------|-------------|---------|
+| [custom_builder.exs](custom_builder.exs) | Define custom dataset builders | `mix run examples/custom_builder.exs` |
+| [hub_push.exs](hub_push.exs) | Push datasets to HuggingFace Hub | `mix run examples/hub_push.exs` |
+
 ### Vision Datasets
 
 | Example | Description | Command |
@@ -149,6 +171,108 @@ comp.response_b   # Second response
 label.preferred                           # :a, :b, or :tie
 LabeledComparison.is_preferred?(label, :a)  # true/false
 LabeledComparison.to_score(label)           # 1.0, 0.0, or 0.5
+```
+
+## File Loading (v0.1.2+)
+
+```elixir
+alias HfDatasetsEx.Dataset
+
+# Load from files
+{:ok, csv} = Dataset.from_csv("/path/to/data.csv")
+{:ok, json} = Dataset.from_json("/path/to/data.json")
+{:ok, parquet} = Dataset.from_parquet("/path/to/data.parquet")
+{:ok, text} = Dataset.from_text("/path/to/data.txt")
+
+# From generator (lazy)
+stream = Dataset.from_generator(fn ->
+  Stream.repeatedly(fn -> %{"x" => :rand.uniform()} end)
+end)
+
+# Eager generator
+ds = Dataset.from_generator(fn -> ... end, eager: true)
+```
+
+## Exporting (v0.1.2+)
+
+```elixir
+Dataset.to_csv(dataset, "/path/to/output.csv")
+Dataset.to_json(dataset, "/path/to/output.json")
+Dataset.to_jsonl(dataset, "/path/to/output.jsonl")
+Dataset.to_parquet(dataset, "/path/to/output.parquet")
+Dataset.to_arrow(dataset, "/path/to/output.arrow")
+Dataset.to_text(dataset, "/path/to/output.txt", column: "text")
+```
+
+## Nx Tensor Formatting (v0.1.2+)
+
+```elixir
+# Format output as Nx tensors
+nx_dataset = Dataset.set_format(dataset, :nx)
+
+# Iterate with tensors
+Enum.each(nx_dataset, fn row ->
+  Nx.sum(row["values"])
+end)
+
+# Batch iteration
+dataset
+|> Dataset.set_format(:nx)
+|> Dataset.iter(batch_size: 32)
+|> Enum.each(fn batch ->
+  # batch["col"] is a stacked tensor
+end)
+```
+
+## Vector Search (v0.1.2+)
+
+```elixir
+# Add search index
+indexed = Dataset.add_index(dataset, "embedding", metric: :cosine)
+
+# Find nearest neighbors
+query = Nx.tensor([0.1, 0.2, 0.3])
+{scores, examples} = Dataset.get_nearest_examples(indexed, "embedding", query, k: 5)
+
+# Save/load index
+Dataset.save_index(indexed, "embedding", "/path/to/index.idx")
+{:ok, loaded} = Dataset.load_index(dataset, "embedding", "/path/to/index.idx")
+```
+
+## Type Casting (v0.1.2+)
+
+```elixir
+alias HfDatasetsEx.Features
+alias HfDatasetsEx.Features.{Value, ClassLabel}
+
+# Cast to schema
+features = Features.new(%{
+  "age" => %Value{dtype: :int32},
+  "label" => ClassLabel.new(names: ["neg", "pos"])
+})
+{:ok, casted} = Dataset.cast(dataset, features)
+
+# Auto-encode string column
+{:ok, encoded} = Dataset.class_encode_column(dataset, "sentiment")
+
+# Stratified split
+{:ok, %{train: train, test: test}} = Dataset.train_test_split(dataset,
+  test_size: 0.2,
+  stratify_by_column: "label"
+)
+```
+
+## Push to Hub (v0.1.2+)
+
+```elixir
+# Requires HF_TOKEN environment variable
+{:ok, url} = Dataset.push_to_hub(dataset, "username/my-dataset")
+
+# With options
+{:ok, url} = Dataset.push_to_hub(dataset, "username/my-dataset",
+  private: true,
+  split: "train"
+)
 ```
 
 ## Sampling Operations

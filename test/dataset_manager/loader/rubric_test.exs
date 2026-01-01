@@ -8,7 +8,7 @@ defmodule HfDatasetsEx.Loader.RubricTest do
       {:ok, dataset} = Rubric.load(:feedback_collection, TestHelper.data_opts())
 
       assert dataset.name == "feedback_collection"
-      assert length(dataset.items) > 0
+      assert dataset.items != []
       assert dataset.metadata.domain == "rubric_evaluation"
     end
 

@@ -62,7 +62,7 @@ defmodule HfDatasetsEx.Registry do
       task_type: "multiple_choice_qa",
       description:
         "Massive Multitask Language Understanding - 57 subjects across STEM, humanities, and social sciences",
-      num_items: 15908,
+      num_items: 15_908,
       license: "MIT",
       source_url: "https://huggingface.co/datasets/cais/mmlu",
       citation: "Hendrycks et al., 2021",

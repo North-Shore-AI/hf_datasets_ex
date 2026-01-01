@@ -19,7 +19,7 @@ defmodule HfDatasetsEx.Format.JSON do
   @behaviour HfDatasetsEx.Format
 
   @impl true
-  def parse(path) do
+  def parse(path, _opts \\ []) do
     with {:ok, content} <- File.read(path),
          {:ok, data} <- Jason.decode(content) do
       items = if is_list(data), do: data, else: [data]
@@ -27,12 +27,6 @@ defmodule HfDatasetsEx.Format.JSON do
     end
   rescue
     e -> {:error, {:parse_error, e}}
-  end
-
-  @impl true
-  def parse_stream(_stream) do
-    # JSON doesn't support streaming - must read entire file
-    raise "JSON format does not support streaming. Use parse/1 instead."
   end
 
   @impl true

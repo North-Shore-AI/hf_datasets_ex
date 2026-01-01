@@ -104,4 +104,23 @@ defmodule HfDatasetsEx.Features.Value do
   @doc "Raw binary"
   @spec binary() :: t()
   def binary, do: new(:binary)
+
+  @type_map %{
+    int8: {:s, 8},
+    int16: {:s, 16},
+    int32: {:s, 32},
+    int64: {:s, 64},
+    uint8: {:u, 8},
+    uint16: {:u, 16},
+    uint32: {:u, 32},
+    uint64: {:u, 64},
+    float16: {:f, 16},
+    float32: {:f, 32},
+    float64: {:f, 64},
+    bool: {:u, 8},
+    bfloat16: {:bf, 16}
+  }
+
+  @spec dtype_to_nx(atom()) :: Nx.Type.t()
+  def dtype_to_nx(dtype), do: Map.get(@type_map, dtype, {:f, 32})
 end

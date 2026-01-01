@@ -16,8 +16,8 @@ defmodule HfDatasetsEx.PRNG.PCG64Test do
     end
 
     test "same seed produces same initial state" do
-      state1 = PCG64.seed(12345)
-      state2 = PCG64.seed(12345)
+      state1 = PCG64.seed(12_345)
+      state2 = PCG64.seed(12_345)
 
       assert state1.state_high == state2.state_high
       assert state1.state_low == state2.state_low

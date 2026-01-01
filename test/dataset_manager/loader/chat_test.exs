@@ -19,7 +19,7 @@ defmodule HfDatasetsEx.Loader.ChatTest do
       {:ok, dataset} = Chat.load(:no_robots, TestHelper.data_opts())
 
       assert dataset.name == "no_robots"
-      assert length(dataset.items) > 0
+      assert dataset.items != []
     end
 
     test "respects sample_size option" do

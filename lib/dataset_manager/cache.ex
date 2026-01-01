@@ -56,9 +56,8 @@ defmodule HfDatasetsEx.Cache do
     with :ok <- ensure_cache_dir(cache_path),
          :ok <- enforce_cache_limits(),
          :ok <- write_data(cache_path, dataset),
-         :ok <- write_metadata(cache_path, dataset),
-         :ok <- update_manifest(cache_key, dataset) do
-      :ok
+         :ok <- write_metadata(cache_path, dataset) do
+      update_manifest(cache_key, dataset)
     end
   end
 
@@ -137,41 +136,39 @@ defmodule HfDatasetsEx.Cache do
 
   defp calculate_cache_size do
     if File.exists?(@cache_dir) do
-      case File.ls(@cache_dir) do
-        {:ok, dirs} ->
-          dirs
-          |> Enum.map(fn dir ->
-            path = Path.join(@cache_dir, dir)
-            get_dir_size(path)
-          end)
-          |> Enum.sum()
-          |> Kernel./(1024 * 1024)
-
-        _ ->
-          0
-      end
+      calculate_cache_size_for_dir(@cache_dir)
     else
       0
     end
   end
 
-  defp get_dir_size(path) do
-    case File.ls(path) do
-      {:ok, files} ->
-        files
-        |> Enum.map(fn file ->
-          file_path = Path.join(path, file)
-
-          case File.stat(file_path) do
-            {:ok, %{size: size, type: :regular}} -> size
-            {:ok, %{type: :directory}} -> get_dir_size(file_path)
-            _ -> 0
-          end
-        end)
+  defp calculate_cache_size_for_dir(cache_dir) do
+    case File.ls(cache_dir) do
+      {:ok, dirs} ->
+        dirs
+        |> Enum.map(&get_dir_size(Path.join(cache_dir, &1)))
         |> Enum.sum()
+        |> Kernel./(1024 * 1024)
 
       _ ->
         0
+    end
+  end
+
+  defp get_dir_size(path) do
+    case File.ls(path) do
+      {:ok, files} -> Enum.sum(Enum.map(files, &get_file_size(path, &1)))
+      _ -> 0
+    end
+  end
+
+  defp get_file_size(dir, file) do
+    file_path = Path.join(dir, file)
+
+    case File.stat(file_path) do
+      {:ok, %{size: size, type: :regular}} -> size
+      {:ok, %{type: :directory}} -> get_dir_size(file_path)
+      _ -> 0
     end
   end
 
@@ -233,9 +230,8 @@ defmodule HfDatasetsEx.Cache do
 
     updated = Map.put(existing, "datasets", datasets)
 
-    with :ok <- File.mkdir_p(@cache_dir),
-         :ok <- File.write(manifest_path, Jason.encode!(updated, pretty: true)) do
-      :ok
+    with :ok <- File.mkdir_p(@cache_dir) do
+      File.write(manifest_path, Jason.encode!(updated, pretty: true))
     end
   end
 

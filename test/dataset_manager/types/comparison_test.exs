@@ -156,12 +156,12 @@ defmodule HfDatasetsEx.Types.LabeledComparisonTest do
     end
   end
 
-  describe "is_preferred?/2" do
+  describe "preferred?/2" do
     test "checks if response is preferred" do
       pref = LabeledComparison.new(:a)
 
-      assert LabeledComparison.is_preferred?(pref, :a) == true
-      assert LabeledComparison.is_preferred?(pref, :b) == false
+      assert LabeledComparison.preferred?(pref, :a) == true
+      assert LabeledComparison.preferred?(pref, :b) == false
     end
   end
 end

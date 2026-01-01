@@ -41,7 +41,7 @@ defmodule HfDatasetsEx.Loader.MathTest do
       {:ok, dataset} = Math.load(:math_500, TestHelper.data_opts())
 
       assert dataset.name == "math_500"
-      assert length(dataset.items) > 0
+      assert dataset.items != []
     end
 
     test "respects sample_size option" do

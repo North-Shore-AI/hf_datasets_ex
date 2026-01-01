@@ -46,7 +46,7 @@ defmodule HfDatasetsEx.Loader.GSM8KTest do
       {:ok, dataset} = GSM8K.load(TestHelper.data_opts())
 
       assert dataset.name == "gsm8k"
-      assert length(dataset.items) > 0
+      assert dataset.items != []
     end
 
     test "respects sample_size option" do

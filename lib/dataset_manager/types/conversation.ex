@@ -75,7 +75,7 @@ defmodule HfDatasetsEx.Types.Conversation do
     # Parse "Human: ... Assistant: ..." format (HH-RLHF style)
     messages = parse_hh_format(text)
 
-    if length(messages) > 0 do
+    if messages != [] do
       {:ok, new(messages, metadata)}
     else
       {:error, :empty_conversation}

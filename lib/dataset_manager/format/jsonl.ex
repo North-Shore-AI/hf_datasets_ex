@@ -14,7 +14,7 @@ defmodule HfDatasetsEx.Format.JSONL do
   @behaviour HfDatasetsEx.Format
 
   @impl true
-  def parse(path) do
+  def parse(path, _opts \\ []) do
     items =
       path
       |> File.stream!(:line)
@@ -26,8 +26,16 @@ defmodule HfDatasetsEx.Format.JSONL do
     e -> {:error, {:parse_error, e}}
   end
 
+  def parse_stream(path_or_stream), do: parse_stream(path_or_stream, [])
+
   @impl true
-  def parse_stream(stream) do
+  def parse_stream(path, _opts) when is_binary(path) do
+    path
+    |> File.stream!(:line)
+    |> parse_stream()
+  end
+
+  def parse_stream(stream, _opts) do
     stream
     |> line_stream()
     |> Stream.map(&String.trim/1)
@@ -38,7 +46,7 @@ defmodule HfDatasetsEx.Format.JSONL do
   @impl true
   def handles?(path) do
     ext = Path.extname(path) |> String.downcase()
-    ext in [".jsonl", ".jsonlines"]
+    ext in [".jsonl", ".jsonlines", ".ndjson"]
   end
 
   defp line_stream(stream) do

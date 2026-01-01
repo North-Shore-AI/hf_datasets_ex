@@ -47,20 +47,26 @@ defmodule HfDatasetsEx.Source do
   @doc "Check if dataset exists"
   @callback exists?(dataset_ref :: String.t(), opts :: fetch_opts()) :: boolean()
 
+  @extension_to_format %{
+    ".parquet" => :parquet,
+    ".jsonl" => :jsonl,
+    ".jsonlines" => :jsonl,
+    ".ndjson" => :jsonl,
+    ".json" => :json,
+    ".csv" => :csv,
+    ".tsv" => :tsv,
+    ".txt" => :text,
+    ".text" => :text,
+    ".arrow" => :arrow,
+    ".ipc" => :arrow
+  }
+
   @doc """
   Detect format from file extension.
   """
   @spec detect_format(String.t()) :: atom()
   def detect_format(path) when is_binary(path) do
-    case Path.extname(path) |> String.downcase() do
-      ".parquet" -> :parquet
-      ".jsonl" -> :jsonl
-      ".jsonlines" -> :jsonl
-      ".json" -> :json
-      ".csv" -> :csv
-      ".txt" -> :text
-      ".arrow" -> :arrow
-      _ -> :unknown
-    end
+    ext = path |> Path.extname() |> String.downcase()
+    Map.get(@extension_to_format, ext, :unknown)
   end
 end

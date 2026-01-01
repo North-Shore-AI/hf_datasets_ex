@@ -12,7 +12,9 @@ defmodule HfDatasetsEx.Features do
     * `Sequence` - Lists of a single type
     * `Image` - Image data with optional decode
     * `Audio` - Audio data with sample rate
+    * `Array2D` - `Array5D` - Fixed-shape multi-dimensional arrays
     * `Translation` - Parallel text in multiple languages
+    * `TranslationVariableLanguages` - Translations with variable language sets
     * `Dict` - Nested dictionary structure
 
   ## Example
@@ -32,7 +34,20 @@ defmodule HfDatasetsEx.Features do
 
   """
 
-  alias HfDatasetsEx.Features.{Value, ClassLabel, Sequence, Image, Audio}
+  alias HfDatasetsEx.Features.{
+    Array2D,
+    Array3D,
+    Array4D,
+    Array5D,
+    Audio,
+    ClassLabel,
+    Image,
+    Sequence,
+    Translation,
+    TranslationVariableLanguages,
+    Value
+  }
+
   alias HfDatasetsEx.Media.Image, as: ImageDecoder
 
   @type feature_type ::
@@ -41,7 +56,14 @@ defmodule HfDatasetsEx.Features do
           | Sequence.t()
           | Image.t()
           | Audio.t()
+          | Array2D.t()
+          | Array3D.t()
+          | Array4D.t()
+          | Array5D.t()
+          | Translation.t()
+          | TranslationVariableLanguages.t()
           | {:dict, %{String.t() => feature_type()}}
+          | map()
 
   @type t :: %__MODULE__{
           schema: %{String.t() => feature_type()}
@@ -73,6 +95,15 @@ defmodule HfDatasetsEx.Features do
   @spec get(t(), String.t()) :: feature_type() | nil
   def get(%__MODULE__{schema: schema}, column) do
     Map.get(schema, column)
+  end
+
+  @doc """
+  Put a feature type for a column.
+  """
+  @spec put(t(), String.t() | atom(), feature_type()) :: t()
+  def put(%__MODULE__{schema: schema} = features, column, feature) do
+    key = if is_atom(column), do: Atom.to_string(column), else: to_string(column)
+    %{features | schema: Map.put(schema, key, feature)}
   end
 
   @doc """
@@ -121,6 +152,16 @@ defmodule HfDatasetsEx.Features do
     end
   end
 
+  def validate_value(value, %Array2D{} = spec), do: Array2D.validate(value, spec)
+  def validate_value(value, %Array3D{} = spec), do: Array3D.validate(value, spec)
+  def validate_value(value, %Array4D{} = spec), do: Array4D.validate(value, spec)
+  def validate_value(value, %Array5D{} = spec), do: Array5D.validate(value, spec)
+
+  def validate_value(value, %Translation{} = spec), do: Translation.validate(value, spec)
+
+  def validate_value(value, %TranslationVariableLanguages{} = spec),
+    do: TranslationVariableLanguages.validate(value, spec)
+
   def validate_value(value, %Image{}) when is_binary(value), do: {:ok, value}
 
   def validate_value(%{"bytes" => bytes} = value, %Image{}) when is_binary(bytes),
@@ -136,20 +177,7 @@ defmodule HfDatasetsEx.Features do
   def validate_value(%{"path" => path} = value, %Audio{}) when is_binary(path), do: {:ok, value}
 
   def validate_value(value, {:dict, inner_schema}) when is_map(value) do
-    results =
-      Enum.map(inner_schema, fn {key, feature_type} ->
-        case Map.fetch(value, key) do
-          {:ok, v} ->
-            case validate_value(v, feature_type) do
-              {:ok, validated} -> {:ok, {key, validated}}
-              error -> error
-            end
-
-          :error ->
-            {:error, {:missing_key, key}}
-        end
-      end)
-
+    results = Enum.map(inner_schema, &validate_dict_entry(value, &1))
     errors = Enum.filter(results, &match?({:error, _}, &1))
 
     if errors == [] do
@@ -161,41 +189,53 @@ defmodule HfDatasetsEx.Features do
 
   def validate_value(_value, _type), do: {:error, :invalid_type}
 
+  defp validate_dict_entry(value, {key, feature_type}) do
+    case Map.fetch(value, key) do
+      {:ok, v} -> validate_and_wrap_dict_value(key, v, feature_type)
+      :error -> {:error, {:missing_key, key}}
+    end
+  end
+
+  defp validate_and_wrap_dict_value(key, value, feature_type) do
+    case validate_value(value, feature_type) do
+      {:ok, validated} -> {:ok, {key, validated}}
+      error -> error
+    end
+  end
+
   @doc """
   Validate a dataset item against the features schema.
   """
   @spec validate_item(map(), t()) :: {:ok, map()} | {:error, term()}
   def validate_item(item, %__MODULE__{schema: schema}) do
-    results =
-      Enum.map(schema, fn {column, feature_type} ->
-        case Map.fetch(item, column) do
-          {:ok, value} ->
-            case validate_value(value, feature_type) do
-              {:ok, validated} -> {:ok, {column, validated}}
-              {:error, reason} -> {:error, {column, reason}}
-            end
-
-          :error ->
-            # Try atom key
-            case Map.fetch(item, String.to_atom(column)) do
-              {:ok, value} ->
-                case validate_value(value, feature_type) do
-                  {:ok, validated} -> {:ok, {column, validated}}
-                  {:error, reason} -> {:error, {column, reason}}
-                end
-
-              :error ->
-                {:error, {column, :missing}}
-            end
-        end
-      end)
-
+    results = Enum.map(schema, &validate_column_value(item, &1))
     errors = Enum.filter(results, &match?({:error, _}, &1))
 
     if errors == [] do
       {:ok, Map.new(Enum.map(results, fn {:ok, kv} -> kv end))}
     else
       {:error, {:validation_errors, Enum.map(errors, fn {:error, e} -> e end)}}
+    end
+  end
+
+  defp validate_column_value(item, {column, feature_type}) do
+    case fetch_column_value(item, column) do
+      {:ok, value} -> validate_and_wrap(column, value, feature_type)
+      :error -> {:error, {column, :missing}}
+    end
+  end
+
+  defp fetch_column_value(item, column) do
+    case Map.fetch(item, column) do
+      {:ok, _} = result -> result
+      :error -> Map.fetch(item, String.to_atom(column))
+    end
+  end
+
+  defp validate_and_wrap(column, value, feature_type) do
+    case validate_value(value, feature_type) do
+      {:ok, validated} -> {:ok, {column, validated}}
+      {:error, reason} -> {:error, {column, reason}}
     end
   end
 
@@ -228,6 +268,15 @@ defmodule HfDatasetsEx.Features do
       {:error, {:sequence_cast_errors, errors}}
     end
   end
+
+  def cast_value(value, %Array2D{} = spec), do: Array2D.validate(value, spec)
+  def cast_value(value, %Array3D{} = spec), do: Array3D.validate(value, spec)
+  def cast_value(value, %Array4D{} = spec), do: Array4D.validate(value, spec)
+  def cast_value(value, %Array5D{} = spec), do: Array5D.validate(value, spec)
+  def cast_value(value, %Translation{} = spec), do: Translation.validate(value, spec)
+
+  def cast_value(value, %TranslationVariableLanguages{} = spec),
+    do: TranslationVariableLanguages.validate(value, spec)
 
   def cast_value(value, type), do: validate_value(value, type)
 
@@ -263,19 +312,24 @@ defmodule HfDatasetsEx.Features do
   @spec decode_item(map(), t()) :: map()
   def decode_item(item, %__MODULE__{schema: schema}) do
     Enum.reduce(schema, item, fn {column, feature}, acc ->
-      key = if Map.has_key?(acc, column), do: column, else: String.to_atom(column)
-
-      case Map.fetch(acc, key) do
-        {:ok, value} ->
-          case decode_value(value, feature) do
-            {:ok, decoded} -> Map.put(acc, key, decoded)
-            _ -> acc
-          end
-
-        :error ->
-          acc
-      end
+      decode_item_column(acc, column, feature)
     end)
+  end
+
+  defp decode_item_column(acc, column, feature) do
+    key = if Map.has_key?(acc, column), do: column, else: String.to_atom(column)
+
+    case Map.fetch(acc, key) do
+      {:ok, value} -> apply_decode(acc, key, value, feature)
+      :error -> acc
+    end
+  end
+
+  defp apply_decode(acc, key, value, feature) do
+    case decode_value(value, feature) do
+      {:ok, decoded} -> Map.put(acc, key, decoded)
+      _ -> acc
+    end
   end
 
   defp decode_value(value, %Image{decode: false}), do: {:ok, value}
@@ -289,24 +343,25 @@ defmodule HfDatasetsEx.Features do
   end
 
   defp decode_value(value, {:dict, inner_schema}) when is_map(value) do
-    decoded =
-      Enum.reduce(inner_schema, value, fn {key, feature}, acc ->
-        case Map.fetch(acc, key) do
-          {:ok, inner_value} ->
-            case decode_value(inner_value, feature) do
-              {:ok, inner_decoded} -> Map.put(acc, key, inner_decoded)
-              _ -> acc
-            end
-
-          :error ->
-            acc
-        end
-      end)
-
+    decoded = Enum.reduce(inner_schema, value, &decode_dict_entry(&1, &2))
     {:ok, decoded}
   end
 
   defp decode_value(value, _feature), do: {:ok, value}
+
+  defp decode_dict_entry({key, feature}, acc) do
+    case Map.fetch(acc, key) do
+      {:ok, inner_value} -> decode_and_put(acc, key, inner_value, feature)
+      :error -> acc
+    end
+  end
+
+  defp decode_and_put(acc, key, inner_value, feature) do
+    case decode_value(inner_value, feature) do
+      {:ok, inner_decoded} -> Map.put(acc, key, inner_decoded)
+      _ -> acc
+    end
+  end
 
   defp infer_type(value) when is_binary(value), do: Value.string()
   defp infer_type(value) when is_integer(value), do: Value.int64()
@@ -346,12 +401,12 @@ defmodule HfDatasetsEx.Features do
   defp validate_dtype(value, :int8) when is_integer(value), do: value >= -128 and value <= 127
 
   defp validate_dtype(value, :int16) when is_integer(value),
-    do: value >= -32768 and value <= 32767
+    do: value >= -32_768 and value <= 32_767
 
   defp validate_dtype(value, :int32) when is_integer(value), do: true
   defp validate_dtype(value, :int64) when is_integer(value), do: true
   defp validate_dtype(value, :uint8) when is_integer(value), do: value >= 0 and value <= 255
-  defp validate_dtype(value, :uint16) when is_integer(value), do: value >= 0 and value <= 65535
+  defp validate_dtype(value, :uint16) when is_integer(value), do: value >= 0 and value <= 65_535
   defp validate_dtype(value, :uint32) when is_integer(value), do: value >= 0
   defp validate_dtype(value, :uint64) when is_integer(value), do: value >= 0
   defp validate_dtype(value, :float16) when is_float(value), do: true
@@ -363,18 +418,45 @@ defmodule HfDatasetsEx.Features do
 
   defp cast_to_dtype(value, :string) when is_binary(value), do: {:ok, value}
   defp cast_to_dtype(value, :string), do: {:ok, to_string(value)}
-  defp cast_to_dtype(value, :int64) when is_integer(value), do: {:ok, value}
-  defp cast_to_dtype(value, :int64) when is_float(value), do: {:ok, trunc(value)}
-  defp cast_to_dtype(value, :int64) when is_binary(value), do: parse_int(value)
-  defp cast_to_dtype(value, :float64) when is_float(value), do: {:ok, value}
-  defp cast_to_dtype(value, :float64) when is_integer(value), do: {:ok, value / 1}
-  defp cast_to_dtype(value, :float64) when is_binary(value), do: parse_float(value)
+  defp cast_to_dtype(value, :binary) when is_binary(value), do: {:ok, value}
+
+  defp cast_to_dtype(value, type)
+       when type in [:int8, :int16, :int32, :int64, :uint8, :uint16, :uint32, :uint64] do
+    with {:ok, int_value} <- cast_to_integer(value) do
+      if validate_dtype(int_value, type) do
+        {:ok, int_value}
+      else
+        {:error, {:out_of_range, int_value, type}}
+      end
+    end
+  end
+
+  defp cast_to_dtype(value, type) when type in [:float16, :float32, :float64] do
+    with {:ok, float_value} <- cast_to_float(value) do
+      if validate_dtype(float_value, type) do
+        {:ok, float_value}
+      else
+        {:error, {:out_of_range, float_value, type}}
+      end
+    end
+  end
+
   defp cast_to_dtype(value, :bool) when is_boolean(value), do: {:ok, value}
   defp cast_to_dtype("true", :bool), do: {:ok, true}
   defp cast_to_dtype("false", :bool), do: {:ok, false}
   defp cast_to_dtype(1, :bool), do: {:ok, true}
   defp cast_to_dtype(0, :bool), do: {:ok, false}
   defp cast_to_dtype(value, type), do: {:error, {:cannot_cast, value, type}}
+
+  defp cast_to_integer(value) when is_integer(value), do: {:ok, value}
+  defp cast_to_integer(value) when is_float(value), do: {:ok, trunc(value)}
+  defp cast_to_integer(value) when is_binary(value), do: parse_int(value)
+  defp cast_to_integer(value), do: {:error, {:invalid_int, value}}
+
+  defp cast_to_float(value) when is_float(value), do: {:ok, value}
+  defp cast_to_float(value) when is_integer(value), do: {:ok, value / 1}
+  defp cast_to_float(value) when is_binary(value), do: parse_float(value)
+  defp cast_to_float(value), do: {:error, {:invalid_float, value}}
 
   defp parse_int(str) do
     case Integer.parse(str) do

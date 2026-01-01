@@ -2,7 +2,7 @@ defmodule DatasetManagerTest do
   use TestSupport.HfCase
   doctest HfDatasetsEx
 
-  alias HfDatasetsEx.{Dataset, Cache}
+  alias HfDatasetsEx.{Cache, Dataset}
 
   setup do
     Cache.clear_all()

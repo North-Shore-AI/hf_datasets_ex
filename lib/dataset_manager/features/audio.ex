@@ -43,9 +43,9 @@ defmodule HfDatasetsEx.Features.Audio do
 
   @doc "Create a 16kHz audio feature (common for speech)"
   @spec speech() :: t()
-  def speech, do: new(sampling_rate: 16000)
+  def speech, do: new(sampling_rate: 16_000)
 
   @doc "Create a 44.1kHz audio feature (CD quality)"
   @spec cd_quality() :: t()
-  def cd_quality, do: new(sampling_rate: 44100)
+  def cd_quality, do: new(sampling_rate: 44_100)
 end

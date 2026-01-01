@@ -157,18 +157,16 @@ defmodule HfDatasetsEx.Loader.GSM8K do
   defp parse_number(str) do
     str = String.trim(str)
 
-    cond do
-      String.contains?(str, ".") ->
-        case Float.parse(str) do
-          {num, _} -> num
-          :error -> nil
-        end
-
-      true ->
-        case Integer.parse(str) do
-          {num, _} -> num * 1.0
-          :error -> nil
-        end
+    if String.contains?(str, ".") do
+      case Float.parse(str) do
+        {num, _} -> num
+        :error -> nil
+      end
+    else
+      case Integer.parse(str) do
+        {num, _} -> num * 1.0
+        :error -> nil
+      end
     end
   end
 

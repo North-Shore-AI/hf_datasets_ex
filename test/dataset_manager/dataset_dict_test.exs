@@ -158,8 +158,8 @@ defmodule HfDatasetsEx.DatasetDictTest do
         end)
 
       assert length(result["train"].items) == 3
-      assert length(result["test"].items) == 0
-      assert length(result["validation"].items) == 0
+      assert result["test"].items == []
+      assert result["validation"].items == []
     end
   end
 

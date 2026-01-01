@@ -16,7 +16,7 @@ defmodule HfDatasetsEx.Loader.MMLU do
 
   """
 
-  alias HfDatasetsEx.{Dataset, DatasetDict, Source, Format}
+  alias HfDatasetsEx.{Dataset, DatasetDict, Format, Source}
 
   @repo_id "cais/mmlu"
 
@@ -172,54 +172,61 @@ defmodule HfDatasetsEx.Loader.MMLU do
   defp parse_mmlu_parquet(path, dataset_name, split, subjects, sample_size) do
     case Format.Parquet.parse(path) do
       {:ok, rows} ->
-        items =
-          rows
-          |> Enum.filter(fn row ->
-            subject = row["subject"] || row[:subject]
-            subject in subjects
-          end)
-          |> Enum.with_index()
-          |> Enum.map(fn {row, idx} ->
-            subject = row["subject"] || row[:subject]
-            question = row["question"] || row[:question]
-            choices = row["choices"] || row[:choices] || build_choices(row)
-            answer = row["answer"] || row[:answer]
-
-            %{
-              id: "mmlu_#{subject}_#{split}_#{idx}",
-              input: %{
-                question: question,
-                choices: if(is_list(choices), do: choices, else: [])
-              },
-              expected: normalize_answer(answer),
-              metadata: %{
-                subject: subject,
-                split: split
-              }
-            }
-          end)
-
+        items = parse_mmlu_rows(rows, split, subjects)
         final_items = if sample_size, do: Enum.take(items, sample_size), else: items
-
-        dataset =
-          Dataset.new(
-            to_string(dataset_name),
-            "1.0",
-            final_items,
-            %{
-              source: "huggingface:#{@repo_id}",
-              license: "MIT",
-              domain: if(dataset_name == :mmlu_stem, do: "STEM", else: "general"),
-              subjects: subjects,
-              split: split
-            }
-          )
-
+        dataset = build_mmlu_dataset(dataset_name, final_items, subjects, split)
         {:ok, dataset}
 
       {:error, reason} ->
         {:error, {:parse_error, reason}}
     end
+  end
+
+  defp parse_mmlu_rows(rows, split, subjects) do
+    rows
+    |> Enum.filter(&row_in_subjects?(&1, subjects))
+    |> Enum.with_index()
+    |> Enum.map(fn {row, idx} -> build_mmlu_item(row, split, idx) end)
+  end
+
+  defp row_in_subjects?(row, subjects) do
+    subject = row["subject"] || row[:subject]
+    subject in subjects
+  end
+
+  defp build_mmlu_item(row, split, idx) do
+    subject = row["subject"] || row[:subject]
+    question = row["question"] || row[:question]
+    choices = row["choices"] || row[:choices] || build_choices(row)
+    answer = row["answer"] || row[:answer]
+
+    %{
+      id: "mmlu_#{subject}_#{split}_#{idx}",
+      input: %{
+        question: question,
+        choices: if(is_list(choices), do: choices, else: [])
+      },
+      expected: normalize_answer(answer),
+      metadata: %{
+        subject: subject,
+        split: split
+      }
+    }
+  end
+
+  defp build_mmlu_dataset(dataset_name, items, subjects, split) do
+    Dataset.new(
+      to_string(dataset_name),
+      "1.0",
+      items,
+      %{
+        source: "huggingface:#{@repo_id}",
+        license: "MIT",
+        domain: if(dataset_name == :mmlu_stem, do: "STEM", else: "general"),
+        subjects: subjects,
+        split: split
+      }
+    )
   end
 
   defp build_choices(row) do

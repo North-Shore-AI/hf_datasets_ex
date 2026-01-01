@@ -33,6 +33,8 @@ defmodule HfDatasetsEx.PRNG.PCG64 do
 
   import Bitwise
 
+  alias HfDatasetsEx.PRNG.SeedSequence
+
   # PCG64 default multiplier (128-bit as {high, low})
   @multiplier_high 2_549_297_995_355_413_924
   @multiplier_low 4_865_540_595_714_422_341
@@ -60,7 +62,7 @@ defmodule HfDatasetsEx.PRNG.PCG64 do
   def seed(seed_value) when is_integer(seed_value) and seed_value >= 0 do
     # Use SeedSequence to generate state (matches NumPy exactly)
     {state_high, state_low, inc_high, inc_low} =
-      HfDatasetsEx.PRNG.SeedSequence.generate_pcg64_state(seed_value)
+      SeedSequence.generate_pcg64_state(seed_value)
 
     # Apply PCG64 seeding algorithm
     seed_with_state(state_high, state_low, inc_high, inc_low)

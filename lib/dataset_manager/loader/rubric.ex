@@ -59,42 +59,36 @@ defmodule HfDatasetsEx.Loader.Rubric do
     sample_size = Keyword.get(opts, :sample_size)
     token = Keyword.get(opts, :token)
 
-    # Feedback-Collection uses a single JSON file, not standard train/test splits
-    # Download the specific file directly
     file_path = "new_feedback_collection.json"
 
-    case HuggingFace.download_file(repo_id, file_path, token: token) do
-      {:ok, data} ->
-        case Jason.decode(data) do
-          {:ok, raw_data} when is_list(raw_data) ->
-            items = parse_rubric_data(raw_data)
-            items = if sample_size, do: Enum.take(items, sample_size), else: items
-
-            dataset =
-              Dataset.new(
-                to_string(dataset_name),
-                "1.0",
-                items,
-                %{
-                  source: "huggingface:#{repo_id}",
-                  split: split,
-                  license: "apache-2.0",
-                  domain: "rubric_evaluation"
-                }
-              )
-
-            {:ok, dataset}
-
-          {:ok, _} ->
-            {:error, {:parse_error, :expected_array}}
-
-          {:error, reason} ->
-            {:error, {:json_parse_error, reason}}
-        end
-
-      {:error, reason} ->
-        {:error, {:huggingface_fetch_failed, reason}}
+    with {:ok, data} <- HuggingFace.download_file(repo_id, file_path, token: token),
+         {:ok, raw_data} <- decode_rubric_json(data) do
+      items = parse_rubric_data(raw_data)
+      items = if sample_size, do: Enum.take(items, sample_size), else: items
+      {:ok, build_rubric_dataset(dataset_name, items, repo_id, split)}
     end
+  end
+
+  defp decode_rubric_json(data) do
+    case Jason.decode(data) do
+      {:ok, raw_data} when is_list(raw_data) -> {:ok, raw_data}
+      {:ok, _} -> {:error, {:parse_error, :expected_array}}
+      {:error, reason} -> {:error, {:json_parse_error, reason}}
+    end
+  end
+
+  defp build_rubric_dataset(dataset_name, items, repo_id, split) do
+    Dataset.new(
+      to_string(dataset_name),
+      "1.0",
+      items,
+      %{
+        source: "huggingface:#{repo_id}",
+        split: split,
+        license: "apache-2.0",
+        domain: "rubric_evaluation"
+      }
+    )
   end
 
   defp parse_rubric_data(raw_data) do

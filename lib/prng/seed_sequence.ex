@@ -75,35 +75,52 @@ defmodule HfDatasetsEx.PRNG.SeedSequence do
       end)
 
     # Phase 2: Mix all bits together
-    {pool, _hash_const} =
-      Enum.reduce(0..(pool_size - 1), {pool, hash_const}, fn i_src, {pool, hash_const} ->
-        Enum.reduce(0..(pool_size - 1), {pool, hash_const}, fn i_dst, {pool, hash_const} ->
-          if i_src != i_dst do
-            src_val = Enum.at(pool, i_src)
-            dst_val = Enum.at(pool, i_dst)
-            {hashed, new_hash_const} = hashmix(src_val, hash_const)
-            mixed = mix(dst_val, hashed)
-            {List.replace_at(pool, i_dst, mixed), new_hash_const}
-          else
-            {pool, hash_const}
-          end
-        end)
-      end)
+    {pool, hash_const} = mix_pool_bits(pool, pool_size, hash_const)
 
     # Phase 3: Mix remaining entropy (if any beyond pool_size)
-    {pool, _} =
-      Enum.reduce(pool_size..(length(entropy) - 1)//1, {pool, hash_const}, fn i_src,
-                                                                              {pool, hash_const} ->
-        Enum.reduce(0..(pool_size - 1), {pool, hash_const}, fn i_dst, {pool, hash_const} ->
-          src_val = Enum.at(entropy, i_src)
-          dst_val = Enum.at(pool, i_dst)
-          {hashed, new_hash_const} = hashmix(src_val, hash_const)
-          mixed = mix(dst_val, hashed)
-          {List.replace_at(pool, i_dst, mixed), new_hash_const}
-        end)
-      end)
+    {pool, _} = mix_remaining_entropy(pool, entropy, pool_size, hash_const)
 
     pool
+  end
+
+  defp mix_pool_bits(pool, pool_size, hash_const) do
+    Enum.reduce(0..(pool_size - 1), {pool, hash_const}, fn i_src, acc ->
+      mix_pool_source(acc, i_src, pool_size)
+    end)
+  end
+
+  defp mix_pool_source({pool, hash_const}, i_src, pool_size) do
+    Enum.reduce(0..(pool_size - 1), {pool, hash_const}, fn i_dst, acc ->
+      mix_pool_pair(acc, pool, i_src, i_dst)
+    end)
+  end
+
+  defp mix_pool_pair({pool, hash_const}, source_pool, i_src, i_dst) when i_src != i_dst do
+    src_val = Enum.at(source_pool, i_src)
+    dst_val = Enum.at(pool, i_dst)
+    {hashed, new_hash_const} = hashmix(src_val, hash_const)
+    mixed = mix(dst_val, hashed)
+    {List.replace_at(pool, i_dst, mixed), new_hash_const}
+  end
+
+  defp mix_pool_pair({pool, hash_const}, _source_pool, _i_src, _i_dst) do
+    {pool, hash_const}
+  end
+
+  defp mix_remaining_entropy(pool, entropy, pool_size, hash_const) do
+    Enum.reduce(pool_size..(length(entropy) - 1)//1, {pool, hash_const}, fn i_src, acc ->
+      mix_entropy_source(acc, entropy, i_src, pool_size)
+    end)
+  end
+
+  defp mix_entropy_source({pool, hash_const}, entropy, i_src, pool_size) do
+    Enum.reduce(0..(pool_size - 1), {pool, hash_const}, fn i_dst, {pool, hash_const} ->
+      src_val = Enum.at(entropy, i_src)
+      dst_val = Enum.at(pool, i_dst)
+      {hashed, new_hash_const} = hashmix(src_val, hash_const)
+      mixed = mix(dst_val, hashed)
+      {List.replace_at(pool, i_dst, mixed), new_hash_const}
+    end)
   end
 
   # Generate state words from pool (as uint64 values)

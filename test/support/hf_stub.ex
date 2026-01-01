@@ -14,13 +14,15 @@ defmodule TestSupport.HfStub do
 
     path_map
     |> Map.keys()
-    |> Enum.each(fn path ->
-      Enum.each(["GET", "HEAD"], fn method ->
-        Bypass.stub(bypass, method, path, fn conn -> handle_request(conn, path_map) end)
-      end)
-    end)
+    |> Enum.each(&stub_path(bypass, &1, path_map))
 
     {:ok, %{bypass: bypass, cache_dir: cache_dir, endpoint: endpoint}}
+  end
+
+  defp stub_path(bypass, path, path_map) do
+    Enum.each(["GET", "HEAD"], fn method ->
+      Bypass.stub(bypass, method, path, fn conn -> handle_request(conn, path_map) end)
+    end)
   end
 
   def stop(%{bypass: bypass, cache_dir: cache_dir}) do
@@ -68,36 +70,37 @@ defmodule TestSupport.HfStub do
   end
 
   defp build_path_map(fixtures) do
-    Enum.reduce(fixtures, %{}, fn {repo_id, fixture}, acc ->
-      config = Map.get(fixture, :config, "main")
-      configs = Map.get(fixture, :configs, [config])
-      splits = Map.get(fixture, :splits, %{})
-      files = Map.fetch!(fixture, :files)
+    Enum.reduce(fixtures, %{}, &add_fixture_paths/2)
+  end
 
-      configs_body = %{
-        "cardData" => %{"configs" => Enum.map(configs, &%{"config_name" => &1})}
-      }
+  defp add_fixture_paths({repo_id, fixture}, acc) do
+    config = Map.get(fixture, :config, "main")
+    configs = Map.get(fixture, :configs, [config])
+    splits = Map.get(fixture, :splits, %{})
+    files = Map.fetch!(fixture, :files)
 
-      infos_body =
-        Enum.reduce(configs, %{}, fn config_name, infos_acc ->
-          split_map = Map.new(splits, fn {split, _paths} -> {split, %{}} end)
-          Map.put(infos_acc, config_name, %{"splits" => split_map})
-        end)
+    acc
+    |> Map.put("/api/datasets/#{repo_id}", {:json, build_configs_body(configs)})
+    |> Map.put("/api/datasets/#{repo_id}/tree/main", {:json, build_tree_body(files)})
+    |> Map.put(
+      "/datasets/#{repo_id}/resolve/main/dataset_infos.json",
+      {:json, build_infos_body(configs, splits)}
+    )
+    |> Map.merge(file_paths(repo_id, files))
+  end
 
-      tree_body =
-        Enum.map(files, fn {path, content} ->
-          %{
-            "type" => "file",
-            "path" => path,
-            "size" => byte_size(content)
-          }
-        end)
+  defp build_configs_body(configs) do
+    %{"cardData" => %{"configs" => Enum.map(configs, &%{"config_name" => &1})}}
+  end
 
-      acc
-      |> Map.put("/api/datasets/#{repo_id}", {:json, configs_body})
-      |> Map.put("/api/datasets/#{repo_id}/tree/main", {:json, tree_body})
-      |> Map.put("/datasets/#{repo_id}/resolve/main/dataset_infos.json", {:json, infos_body})
-      |> Map.merge(file_paths(repo_id, files))
+  defp build_infos_body(configs, splits) do
+    split_map = Map.new(splits, fn {split, _paths} -> {split, %{}} end)
+    Map.new(configs, fn config_name -> {config_name, %{"splits" => split_map}} end)
+  end
+
+  defp build_tree_body(files) do
+    Enum.map(files, fn {path, content} ->
+      %{"type" => "file", "path" => path, "size" => byte_size(content)}
     end)
   end
 

@@ -83,8 +83,8 @@ defmodule HfDatasetsEx.Types.LabeledComparison do
   @doc """
   Check if a response is the preferred one.
   """
-  @spec is_preferred?(t(), :a | :b) :: boolean()
-  def is_preferred?(%__MODULE__{preferred: preferred}, response) do
+  @spec preferred?(t(), :a | :b) :: boolean()
+  def preferred?(%__MODULE__{preferred: preferred}, response) do
     preferred == response
   end
 

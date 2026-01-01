@@ -36,7 +36,7 @@ defmodule HfDatasetsEx do
       {:ok, dataset} = HfDatasetsEx.load("my_dataset", source: "path/to/data.jsonl")
   """
 
-  alias HfDatasetsEx.{Loader, Sampler, Cache, Registry}
+  alias HfDatasetsEx.{Cache, Loader, Registry, Sampler}
 
   # Dataset loading
 

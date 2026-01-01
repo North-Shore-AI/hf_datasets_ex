@@ -114,6 +114,12 @@ defmodule HfDatasetsEx.DatasetDict do
   end
 
   @doc """
+  Push all splits to HuggingFace Hub.
+  """
+  @spec push_to_hub(t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  defdelegate push_to_hub(dd, repo_id, opts \\ []), to: HfDatasetsEx.Hub
+
+  @doc """
   Add or replace a split.
 
   ## Example

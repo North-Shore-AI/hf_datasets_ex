@@ -388,23 +388,35 @@ defmodule HfDatasetsEx.Fetcher.HuggingFace do
 
     results =
       Enum.map(paths, fn file_path ->
-        format =
-          if format_hint == :unknown do
-            HfDatasetsEx.Format.detect(file_path)
-          else
-            format_hint
-          end
-
-        parser = HfDatasetsEx.Format.parser_for(format)
-
-        if is_nil(parser) do
-          {:ok, []}
-        else
-          apply(parser, :parse, [file_path])
+        case resolve_format_config(file_path, format_hint) do
+          {:ok, module, opts} -> module.parse(file_path, opts)
+          {:error, _} -> {:ok, []}
         end
       end)
 
     merge_parse_results(results)
+  end
+
+  defp resolve_format_config(_file_path, {:ok, module, opts}), do: {:ok, module, opts}
+  defp resolve_format_config(file_path, {:error, _}), do: HfDatasetsEx.Format.detect(file_path)
+  defp resolve_format_config(file_path, :unknown), do: HfDatasetsEx.Format.detect(file_path)
+
+  defp resolve_format_config(file_path, atom) when is_atom(atom) do
+    if function_exported?(atom, :parse, 2) do
+      {:ok, atom, []}
+    else
+      resolve_format_via_parser(file_path, atom)
+    end
+  end
+
+  defp resolve_format_config(file_path, _), do: HfDatasetsEx.Format.detect(file_path)
+
+  defp resolve_format_via_parser(file_path, atom) do
+    case HfDatasetsEx.Format.parser_for(atom) do
+      {module, opts} -> {:ok, module, opts}
+      module when is_atom(module) and not is_nil(module) -> {:ok, module, []}
+      nil -> HfDatasetsEx.Format.detect(file_path)
+    end
   end
 
   defp merge_parse_results(results) do

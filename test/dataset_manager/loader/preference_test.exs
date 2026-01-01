@@ -19,7 +19,7 @@ defmodule HfDatasetsEx.Loader.PreferenceTest do
       {:ok, dataset} = Preference.load(:hh_rlhf, TestHelper.data_opts())
 
       assert dataset.name == "hh_rlhf"
-      assert length(dataset.items) > 0
+      assert dataset.items != []
     end
 
     test "respects sample_size option" do

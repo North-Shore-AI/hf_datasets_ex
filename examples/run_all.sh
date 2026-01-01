@@ -54,7 +54,26 @@ CORE_EXAMPLES=(
   "examples/cross_validation.exs"
 )
 
-# Dataset-specific examples
+# v0.1.2 File I/O examples (no network required)
+FILE_IO_EXAMPLES=(
+  "examples/file_loading.exs"
+  "examples/export_formats.exs"
+)
+
+# v0.1.2 ML integration examples (no network required)
+ML_EXAMPLES=(
+  "examples/nx_formatting.exs"
+  "examples/vector_search.exs"
+  "examples/type_casting.exs"
+  "examples/custom_builder.exs"
+)
+
+# Hub examples (requires HF_TOKEN)
+HUB_EXAMPLES=(
+  "examples/hub_push.exs"
+)
+
+# Dataset-specific examples (requires network)
 DATASET_EXAMPLES=(
   "examples/math/gsm8k_example.exs"
   "examples/math/math500_example.exs"
@@ -72,6 +91,33 @@ run_example() {
   mix run "$example"
   echo ""
 }
+
+echo "=== File I/O Examples (v0.1.2+) ==="
+for example in "${FILE_IO_EXAMPLES[@]}"; do
+  if [ -f "$example" ]; then
+    run_example "$example"
+  else
+    echo "Skipping $example (not found)"
+  fi
+done
+
+echo "=== ML Integration Examples (v0.1.2+) ==="
+for example in "${ML_EXAMPLES[@]}"; do
+  if [ -f "$example" ]; then
+    run_example "$example"
+  else
+    echo "Skipping $example (not found)"
+  fi
+done
+
+echo "=== Hub Examples ==="
+for example in "${HUB_EXAMPLES[@]}"; do
+  if [ -f "$example" ]; then
+    run_example "$example"
+  else
+    echo "Skipping $example (not found)"
+  fi
+done
 
 echo "=== Core Functionality Examples ==="
 for example in "${CORE_EXAMPLES[@]}"; do

@@ -30,7 +30,7 @@ defmodule HfDatasetsEx.Fetcher.HuggingFaceTest do
       {:ok, files} = HuggingFace.list_files("openai/gsm8k")
 
       assert is_list(files)
-      assert length(files) > 0
+      assert files != []
 
       # Should have directories or files
       file_names = Enum.map(files, & &1["path"])
@@ -45,7 +45,7 @@ defmodule HfDatasetsEx.Fetcher.HuggingFaceTest do
       {:ok, files} = HuggingFace.list_files("openai/gsm8k", config: "main")
 
       assert is_list(files)
-      assert length(files) > 0
+      assert files != []
 
       # Should have parquet files in the main subdirectory
       file_names = Enum.map(files, & &1["path"])
@@ -131,7 +131,7 @@ defmodule HfDatasetsEx.Fetcher.HuggingFaceTest do
         )
 
       assert is_list(data)
-      assert length(data) > 0
+      assert data != []
 
       first = hd(data)
       # MMLU has question and choices columns

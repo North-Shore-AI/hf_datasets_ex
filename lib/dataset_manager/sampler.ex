@@ -96,20 +96,7 @@ defmodule HfDatasetsEx.Sampler do
 
       samples_per_stratum =
         if total_allocated > size do
-          # Reduce largest strata first to fit within size
-          excess = total_allocated - size
-
-          samples_per_stratum
-          |> Enum.sort_by(fn {_stratum, count} -> -count end)
-          |> Enum.reduce({%{}, excess}, fn {stratum, count}, {acc_map, remaining} ->
-            if remaining > 0 do
-              reduction = min(remaining, count)
-              {Map.put(acc_map, stratum, count - reduction), remaining - reduction}
-            else
-              {Map.put(acc_map, stratum, count), 0}
-            end
-          end)
-          |> elem(0)
+          adjust_samples_for_excess(samples_per_stratum, total_allocated - size)
         else
           samples_per_stratum
         end
@@ -139,6 +126,22 @@ defmodule HfDatasetsEx.Sampler do
       {:ok, sampled_dataset}
     else
       :error -> {:error, :missing_required_option}
+    end
+  end
+
+  defp adjust_samples_for_excess(samples_per_stratum, excess) do
+    samples_per_stratum
+    |> Enum.sort_by(fn {_stratum, count} -> -count end)
+    |> Enum.reduce({%{}, excess}, &reduce_stratum_sample/2)
+    |> elem(0)
+  end
+
+  defp reduce_stratum_sample({stratum, count}, {acc_map, remaining}) do
+    if remaining > 0 do
+      reduction = min(remaining, count)
+      {Map.put(acc_map, stratum, count - reduction), remaining - reduction}
+    else
+      {Map.put(acc_map, stratum, count), 0}
     end
   end
 

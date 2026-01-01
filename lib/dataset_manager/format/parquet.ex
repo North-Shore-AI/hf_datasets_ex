@@ -17,7 +17,7 @@ defmodule HfDatasetsEx.Format.Parquet do
   @behaviour HfDatasetsEx.Format
 
   @impl true
-  def parse(path) do
+  def parse(path, _opts \\ []) do
     backend = parquet_backend()
 
     case backend.from_parquet(path, rechunk: true) do
@@ -32,11 +32,16 @@ defmodule HfDatasetsEx.Format.Parquet do
     e -> {:error, {:parse_error, e}}
   end
 
+  def parse_stream(path_or_stream), do: parse_stream(path_or_stream, [])
+
   @impl true
-  def parse_stream(_stream) do
-    # Parquet doesn't support true streaming
-    # Would need chunked reads via Explorer
-    raise "Parquet format does not support streaming. Use parse/1 instead."
+  def parse_stream(path, opts) when is_binary(path) do
+    # Parquet isn't truly streaming in Explorer; batch iteration after loading.
+    stream_rows(path, opts)
+  end
+
+  def parse_stream(_stream, _opts) do
+    raise "Parquet format does not support streaming from enumerables. Use parse/2 instead."
   end
 
   @doc """

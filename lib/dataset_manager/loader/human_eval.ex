@@ -16,7 +16,7 @@ defmodule HfDatasetsEx.Loader.HumanEval do
 
   """
 
-  alias HfDatasetsEx.{Dataset, Source, Format}
+  alias HfDatasetsEx.{Dataset, Format, Source}
 
   @repo_id "openai/openai_humaneval"
 
@@ -38,87 +38,78 @@ defmodule HfDatasetsEx.Loader.HumanEval do
     load_from_huggingface(opts)
   end
 
+  @primary_path "openai_humaneval/test-00000-of-00001.parquet"
+  @alternate_path "data/test-00000-of-00001.parquet"
+
   # Load from HuggingFace
   defp load_from_huggingface(opts) do
     sample_size = Keyword.get(opts, :sample_size)
 
-    # HumanEval on HuggingFace is stored as parquet
-    file_path = "openai_humaneval/test-00000-of-00001.parquet"
+    with {:error, _} <- try_download_and_parse(@primary_path, sample_size) do
+      try_download_and_parse(@alternate_path, sample_size)
+    end
+  end
 
+  defp try_download_and_parse(file_path, sample_size) do
     case Source.HuggingFace.download(@repo_id, file_path, []) do
-      {:ok, local_path} ->
-        case parse_humaneval_parquet(local_path, sample_size) do
-          {:ok, _} = success -> success
-          {:error, reason} -> {:error, {:parse_failed, reason}}
-        end
-
-      {:error, _reason} ->
-        # Try alternative path
-        case Source.HuggingFace.download(@repo_id, "data/test-00000-of-00001.parquet", []) do
-          {:ok, local_path} ->
-            case parse_humaneval_parquet(local_path, sample_size) do
-              {:ok, _} = success ->
-                success
-
-              {:error, reason} ->
-                {:error, {:parse_failed, reason}}
-            end
-
-          {:error, reason} ->
-            {:error, {:huggingface_download_failed, reason}}
-        end
+      {:ok, local_path} -> parse_humaneval_parquet(local_path, sample_size)
+      {:error, reason} -> {:error, {:huggingface_download_failed, reason}}
     end
   end
 
   defp parse_humaneval_parquet(path, sample_size) do
     case Format.Parquet.parse(path) do
       {:ok, rows} ->
-        items =
-          rows
-          |> Enum.with_index()
-          |> Enum.map(fn {row, idx} ->
-            task_id = row["task_id"] || row[:task_id] || "HumanEval/#{idx}"
-            prompt = row["prompt"] || row[:prompt]
-            canonical = row["canonical_solution"] || row[:canonical_solution]
-            test_code = row["test"] || row[:test]
-            entry_point = row["entry_point"] || row[:entry_point]
-
-            %{
-              id: "humaneval_#{idx}",
-              input: %{
-                signature: prompt,
-                tests: test_code,
-                entry_point: entry_point,
-                description: extract_description(prompt)
-              },
-              expected: canonical,
-              metadata: %{
-                task_id: task_id,
-                difficulty: estimate_difficulty(canonical)
-              }
-            }
-          end)
-
+        items = parse_humaneval_rows(rows)
         final_items = if sample_size, do: Enum.take(items, sample_size), else: items
-
-        dataset =
-          Dataset.new(
-            "humaneval",
-            "1.0",
-            final_items,
-            %{
-              source: "huggingface:#{@repo_id}",
-              license: "MIT",
-              domain: "code_generation",
-              language: "python"
-            }
-          )
-
-        {:ok, dataset}
+        {:ok, build_humaneval_dataset(final_items)}
 
       {:error, reason} ->
         {:error, {:parse_error, reason}}
     end
+  end
+
+  defp parse_humaneval_rows(rows) do
+    rows
+    |> Enum.with_index()
+    |> Enum.map(fn {row, idx} -> build_humaneval_item(row, idx) end)
+  end
+
+  defp build_humaneval_item(row, idx) do
+    task_id = row["task_id"] || row[:task_id] || "HumanEval/#{idx}"
+    prompt = row["prompt"] || row[:prompt]
+    canonical = row["canonical_solution"] || row[:canonical_solution]
+    test_code = row["test"] || row[:test]
+    entry_point = row["entry_point"] || row[:entry_point]
+
+    %{
+      id: "humaneval_#{idx}",
+      input: %{
+        signature: prompt,
+        tests: test_code,
+        entry_point: entry_point,
+        description: extract_description(prompt)
+      },
+      expected: canonical,
+      metadata: %{
+        task_id: task_id,
+        difficulty: estimate_difficulty(canonical)
+      }
+    }
+  end
+
+  defp build_humaneval_dataset(items) do
+    Dataset.new(
+      "humaneval",
+      "1.0",
+      items,
+      %{
+        source: "huggingface:#{@repo_id}",
+        license: "MIT",
+        domain: "code_generation",
+        language: "python"
+      }
+    )
   end
 
   @doc """

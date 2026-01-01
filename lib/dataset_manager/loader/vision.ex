@@ -94,25 +94,29 @@ defmodule HfDatasetsEx.Loader.Vision do
     raw_data
     |> Enum.with_index()
     |> Enum.map(fn {row, idx} ->
-      image_value = parse_image(row["image"] || row[:image], decode_images)
-      label = row["label"] || row[:label]
-
-      item = %{
-        id: "#{dataset_name}_#{idx}",
-        input: %{image: image_value},
-        expected: label,
-        metadata: %{
-          dataset: to_string(dataset_name)
-        }
-      }
-
-      if config.has_species do
-        species = row["species"] || row[:species]
-        if is_nil(species), do: item, else: put_in(item, [:metadata, :species], species)
-      else
-        item
-      end
+      build_vision_item(row, dataset_name, decode_images, config, idx)
     end)
+  end
+
+  defp build_vision_item(row, dataset_name, decode_images, config, idx) do
+    image_value = parse_image(row["image"] || row[:image], decode_images)
+    label = row["label"] || row[:label]
+
+    item = %{
+      id: "#{dataset_name}_#{idx}",
+      input: %{image: image_value},
+      expected: label,
+      metadata: %{dataset: to_string(dataset_name)}
+    }
+
+    maybe_add_species(item, row, config)
+  end
+
+  defp maybe_add_species(item, _row, %{has_species: false}), do: item
+
+  defp maybe_add_species(item, row, %{has_species: true}) do
+    species = row["species"] || row[:species]
+    if is_nil(species), do: item, else: put_in(item, [:metadata, :species], species)
   end
 
   defp parse_image(nil, _decode_images), do: %{"bytes" => nil, "path" => nil}

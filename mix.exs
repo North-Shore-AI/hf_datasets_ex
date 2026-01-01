@@ -1,7 +1,7 @@
 defmodule HfDatasetsEx.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "0.1.2"
   @source_url "https://github.com/North-Shore-AI/hf_datasets_ex"
 
   def project do
@@ -36,12 +36,16 @@ defmodule HfDatasetsEx.MixProject do
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.3"},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
 
       # HuggingFace Hub client (API, downloads, caching, auth)
       {:hf_hub, "~> 0.1.1"},
 
       # DataFrames + Parquet support
       {:explorer, "~> 0.11.1"},
+
+      # Tensor library
+      {:nx, "~> 0.9"},
 
       # Image decoding (libvips)
       {:vix, "~> 0.35"},

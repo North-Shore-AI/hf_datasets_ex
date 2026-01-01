@@ -1,7 +1,7 @@
 defmodule HfDatasetsEx.Types.ConversationTest do
   use ExUnit.Case, async: true
 
-  alias HfDatasetsEx.Types.{Message, Conversation}
+  alias HfDatasetsEx.Types.{Conversation, Message}
 
   describe "new/2" do
     test "creates conversation with messages" do

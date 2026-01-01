@@ -2,6 +2,7 @@ defmodule HfDatasetsEx.DatasetOpsTest do
   use ExUnit.Case, async: true
 
   alias HfDatasetsEx.{Dataset, Features}
+  alias HfDatasetsEx.Features.Value
 
   @sample_items [
     %{id: "1", input: "What is 2+2?", expected: "4", metadata: %{difficulty: "easy"}},
@@ -271,7 +272,7 @@ defmodule HfDatasetsEx.DatasetOpsTest do
       shard = Dataset.shard(dataset, num_shards: 3, index: 0)
 
       assert %Dataset{} = shard
-      assert length(shard.items) > 0
+      assert shard.items != []
     end
   end
 
@@ -408,7 +409,7 @@ defmodule HfDatasetsEx.DatasetOpsTest do
 
     test "uses provided features" do
       items = [%{id: "1", input: "x", expected: "y"}]
-      features = Features.new(%{"id" => HfDatasetsEx.Features.Value.string()})
+      features = Features.new(%{"id" => Value.string()})
       dataset = Dataset.new("test", "1.0", items, %{}, features)
 
       assert dataset.features == features

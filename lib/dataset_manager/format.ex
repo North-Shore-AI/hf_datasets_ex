@@ -1,76 +1,71 @@
 defmodule HfDatasetsEx.Format do
   @moduledoc """
-  Behaviour for data format parsers.
-
-  Formats are responsible for parsing raw data files into Elixir maps.
-  They are source-agnostic and work with local file paths.
-
-  ## Implementations
-
-  - `HfDatasetsEx.Format.JSONL` - JSON Lines format
-  - `HfDatasetsEx.Format.JSON` - JSON format
-  - `HfDatasetsEx.Format.CSV` - CSV format
-  - `HfDatasetsEx.Format.Parquet` - Parquet format (via Explorer)
-
-  ## Example
-
-      # Parse a JSONL file
-      {:ok, items} = Format.JSONL.parse("data.jsonl")
-
-      # Stream parse for large files
-      stream = File.stream!("data.jsonl")
-      items = Format.JSONL.parse_stream(stream) |> Enum.take(100)
-
+  Format detection and parser registry.
   """
 
   @doc "Parse file contents into list of maps"
-  @callback parse(path :: String.t()) :: {:ok, [map()]} | {:error, term()}
+  @callback parse(Path.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
 
   @doc "Parse streaming contents lazily"
-  @callback parse_stream(stream :: Enumerable.t()) :: Enumerable.t()
+  @callback parse_stream(Path.t(), keyword()) :: Enumerable.t()
 
   @doc "Detect if this format can handle the file"
-  @callback handles?(path :: String.t()) :: boolean()
+  @callback handles?(Path.t()) :: boolean()
+
+  @optional_callbacks [parse_stream: 2]
+
+  @extension_map %{
+    ".jsonl" => HfDatasetsEx.Format.JSONL,
+    ".jsonlines" => HfDatasetsEx.Format.JSONL,
+    ".ndjson" => HfDatasetsEx.Format.JSONL,
+    ".json" => HfDatasetsEx.Format.JSON,
+    ".csv" => HfDatasetsEx.Format.CSV,
+    ".tsv" => {HfDatasetsEx.Format.CSV, [delimiter: "\t"]},
+    ".parquet" => HfDatasetsEx.Format.Parquet,
+    ".txt" => HfDatasetsEx.Format.Text,
+    ".text" => HfDatasetsEx.Format.Text,
+    ".arrow" => HfDatasetsEx.Format.Arrow,
+    ".ipc" => HfDatasetsEx.Format.Arrow
+  }
 
   @doc """
   Detect format from file extension.
   """
-  @spec detect(String.t()) :: atom()
-  def detect(path) when is_binary(path) do
-    case Path.extname(path) |> String.downcase() do
-      ".parquet" -> :parquet
-      ".jsonl" -> :jsonl
-      ".jsonlines" -> :jsonl
-      ".json" -> :json
-      ".csv" -> :csv
-      ".txt" -> :text
-      ".arrow" -> :arrow
-      _ -> :unknown
+  @spec detect(Path.t()) :: {:ok, module(), keyword()} | {:error, :unknown_format}
+  def detect(path) do
+    ext = Path.extname(path) |> String.downcase()
+
+    case Map.get(@extension_map, ext) do
+      nil -> {:error, :unknown_format}
+      {module, opts} -> {:ok, module, opts}
+      module -> {:ok, module, []}
     end
   end
 
   @doc """
   Get the parser module for a format.
   """
-  @spec parser_for(atom()) :: module() | nil
+  @spec parser_for(atom()) :: module() | {module(), keyword()} | nil
   def parser_for(:jsonl), do: HfDatasetsEx.Format.JSONL
   def parser_for(:json), do: HfDatasetsEx.Format.JSON
   def parser_for(:csv), do: HfDatasetsEx.Format.CSV
+  def parser_for(:tsv), do: {HfDatasetsEx.Format.CSV, [delimiter: "\t"]}
   def parser_for(:parquet), do: HfDatasetsEx.Format.Parquet
+  def parser_for(:text), do: HfDatasetsEx.Format.Text
+  def parser_for(:arrow), do: HfDatasetsEx.Format.Arrow
   def parser_for(_), do: nil
 
   @doc """
-  Parse a file using the appropriate format parser.
+  Parse file using detected format.
   """
-  @spec parse(String.t()) :: {:ok, [map()]} | {:error, term()}
-  def parse(path) do
-    format = detect(path)
-    do_parse(path, format)
-  end
+  @spec parse(Path.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def parse(path, opts \\ []) do
+    case detect(path) do
+      {:ok, module, default_opts} ->
+        module.parse(path, Keyword.merge(default_opts, opts))
 
-  defp do_parse(path, :jsonl), do: HfDatasetsEx.Format.JSONL.parse(path)
-  defp do_parse(path, :json), do: HfDatasetsEx.Format.JSON.parse(path)
-  defp do_parse(path, :csv), do: HfDatasetsEx.Format.CSV.parse(path)
-  defp do_parse(path, :parquet), do: HfDatasetsEx.Format.Parquet.parse(path)
-  defp do_parse(_path, format), do: {:error, {:unknown_format, format}}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 end
