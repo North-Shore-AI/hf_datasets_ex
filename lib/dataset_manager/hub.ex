@@ -203,7 +203,7 @@ defmodule HfDatasetsEx.Hub do
     end
   end
 
-  defp build_parquet_shard(dataset, shard_items, idx) do
+  defp build_parquet_shard(%Dataset{} = dataset, shard_items, idx) do
     temp_path = Path.join(System.tmp_dir!(), "shard_#{idx}_#{unique_suffix()}.parquet")
     temp_dataset = %Dataset{dataset | items: shard_items}
 

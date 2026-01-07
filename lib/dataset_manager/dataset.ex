@@ -1637,7 +1637,7 @@ defmodule HfDatasetsEx.Dataset do
   end
 
   # Helper to update items and recalculate metadata
-  defp update_items(dataset, new_items) do
+  defp update_items(%__MODULE__{} = dataset, new_items) do
     new_metadata = Map.put(dataset.metadata, :total_items, Kernel.length(new_items))
 
     %__MODULE__{
